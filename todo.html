@@ -116,6 +116,13 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .card-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
 .task-card:hover .card-actions, .task-card.focused .card-actions { opacity: 1; }
 .task-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.subtask-box { margin-top: 8px; padding-left: 24px; }
+.sub-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 14px; }
+.sub-row .sub-done { color: var(--text-2); text-decoration: line-through; }
+.sub-del { opacity: 0; } .sub-row:hover .sub-del { opacity: 1; }
+.sub-check { width: 14px; height: 14px; accent-color: var(--accent); }
+.label-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.expand-btn { font-size: 12px; }
 </style>
 </head>
 <body>
@@ -448,6 +455,9 @@ function buildTaskCard(task) {
         (task.rolledOver ? '<span class="rollover-mark" title="昨日遗留">遗</span>' : '') +
         (task.minLine ? '<span class="min-dot' + (task.minLineMet ? ' met' : '') + '" title="最低完成线"></span>' : '') +
       '</span>' +
+      (task.subtasks && task.subtasks.length
+        ? '<button class="icon-btn expand-btn" data-action="expand" title="子任务">' +
+          (expandedIds.has(task.id) ? '▾' : '▸') + '</button>' : '') +
       '<span class="card-actions">' +
         '<button class="icon-btn" data-action="focus" title="聚焦">◉</button>' +
         '<button class="icon-btn" data-action="copy" title="复制">⧉</button>' +
@@ -472,7 +482,67 @@ function deleteTask(id) {
   save();
 }
 
+const expandedIds = new Set();
+
+function refreshCard(id) {
+  const t = state.tasks.find(x => x.id === id);
+  const old = document.querySelector('.task-card[data-id="' + id + '"]');
+  if (!old || !t) { renderToday(); return; }
+  const fresh = buildTaskCard(t);
+  if (expandedIds.has(id)) fillSubtaskBox(fresh, t);
+  old.replaceWith(fresh);
+}
+
+function fillSubtaskBox(card, task) {
+  const box = card.querySelector('.subtask-box');
+  box.style.display = '';
+  box.innerHTML = (task.subtasks || []).map(s =>
+    '<div class="sub-row">' +
+      '<input type="checkbox" class="sub-check" data-sid="' + s.id + '"' + (s.done ? ' checked' : '') + '>' +
+      '<span class="' + (s.done ? 'sub-done' : '') + '">' + escapeHtml(s.text) + '</span>' +
+      '<button class="icon-btn sub-del" data-sid="' + s.id + '">✕</button>' +
+    '</div>').join('') +
+    '<div class="add-row" style="margin-top:6px"><input class="sub-input" type="text" placeholder="添加子任务，回车确认"></div>' +
+    '<div class="label-picker">' + state.settings.labels.map(l =>
+      '<button class="chip' + (task.labels.includes(l.name) ? ' on' : '') + '" data-label="' + escapeHtml(l.name) + '"' +
+      (task.labels.includes(l.name) ? ' style="background:' + l.color + '"' : '') + '>' + escapeHtml(l.name) + '</button>').join('') +
+    '</div>';
+  box.querySelector('.sub-input').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const text = e.target.value.trim();
+    if (!text) return;
+    task.subtasks.push({ id: genId(), text: text, done: false });
+    save(); refreshCard(task.id);
+    const again = document.querySelector('.task-card[data-id="' + task.id + '"] .sub-input');
+    if (again) again.focus();
+  });
+  box.addEventListener('change', e => {
+    const sid = e.target.dataset && e.target.dataset.sid;
+    if (!sid) return;
+    const s = task.subtasks.find(x => x.id === sid);
+    if (s) { s.done = e.target.checked; state.tasks[state.tasks.indexOf(task)] = checkMinLine(task); save(); refreshCard(task.id); }
+  });
+  box.addEventListener('click', e => {
+    const del = e.target.closest('.sub-del');
+    if (del) { task.subtasks = task.subtasks.filter(x => x.id !== del.dataset.sid); save(); refreshCard(task.id); return; }
+    const chip = e.target.closest('[data-label]');
+    if (chip) {
+      const name = chip.dataset.label;
+      task.labels = task.labels.includes(name) ? task.labels.filter(x => x !== name) : task.labels.concat(name);
+      save(); refreshCard(task.id);
+    }
+  });
+}
+
+function toggleExpand(id, forceOpen) {
+  if (forceOpen) expandedIds.add(id);
+  else expandedIds.has(id) ? expandedIds.delete(id) : expandedIds.add(id);
+  refreshCard(id);
+}
+
 function dispatchCardAction(e) {
+  const txt = e.target.closest('.task-text');
+  if (txt) { toggleExpand(txt.closest('.task-card').dataset.id); return; }
   const btn = e.target.closest('[data-action]');
   if (!btn) {
     const chk = e.target.closest('.task-check');
@@ -480,6 +550,7 @@ function dispatchCardAction(e) {
     return;
   }
   const id = btn.closest('.task-card').dataset.id;
+  if (btn.dataset.action === 'expand') { toggleExpand(id); return; }
   if (btn.dataset.action === 'delete') { deleteTask(id); showToast('已删除'); }
   // focus/copy/minline 的 handler 由 Task 8/9/11/15 在此 switch 追加 case
 }
