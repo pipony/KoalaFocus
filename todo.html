@@ -564,6 +564,11 @@ function renderToday() {
   document.getElementById('count-inbox').textContent = String(inbox.length);
   doing.forEach(t => doingBox.appendChild(buildTaskCard(t)));
   inbox.forEach(t => inboxBox.appendChild(buildTaskCard(t)));
+  expandedIds.forEach(id => {   // renderAll 重建后恢复展开盒（Task 7 修复轮裁定）
+    const card = document.querySelector('.task-card[data-id="' + id + '"]');
+    const t = state.tasks.find(x => x.id === id);
+    if (card && t) fillSubtaskBox(card, t);
+  });
   if (!doing.length) doingBox.innerHTML = '<div class="empty-hint">从 inbox 拖入或聚焦一条，最多 ' + state.settings.maxDoing + ' 条</div>';
   if (!inbox.length) inboxBox.innerHTML = '<div class="empty-hint">Inbox 为空，用下方输入框添加</div>';
 }
