@@ -222,7 +222,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
 - [ ] **Step 4: 运行测试通过**
 
-Run: `node tests/core.test.js` → `8 passed, 0 failed`；Run: `node tests/syntax-check.js` → `syntax OK (1 script block)`
+Run: `node tests/core.test.js` → `7 passed, 0 failed`；Run: `node tests/syntax-check.js` → `syntax OK (1 script block)`
 
 - [ ] **Step 5: Commit**
 
@@ -371,7 +371,7 @@ function rollover(state, now) {
 
 - [ ] **Step 4: 运行测试通过**
 
-Run: `node tests/core.test.js` → `14 passed, 0 failed`
+Run: `node tests/core.test.js` → `13 passed, 0 failed`
 
 - [ ] **Step 5: Commit**
 
@@ -469,7 +469,7 @@ function parseBulkText(text) {
 
 - [ ] **Step 4: 运行测试通过**
 
-Run: `node tests/core.test.js` → `21 passed, 0 failed`
+Run: `node tests/core.test.js` → `20 passed, 0 failed`
 
 - [ ] **Step 5: Commit**
 
@@ -631,7 +631,7 @@ function settleFocusSession(state, nowMs) {
 
 - [ ] **Step 4: 运行测试通过**
 
-Run: `node tests/core.test.js` → `29 passed, 0 failed`
+Run: `node tests/core.test.js` → `28 passed, 0 failed`
 
 - [ ] **Step 5: Commit**
 
@@ -941,7 +941,7 @@ showView('today');
 
 - [ ] **Step 3: 语法与测试检查**
 
-Run: `node tests/syntax-check.js` → OK；Run: `node tests/core.test.js` → 仍 `29 passed`（纯核心未动）
+Run: `node tests/syntax-check.js` → OK；Run: `node tests/core.test.js` → 仍 `28 passed`（纯核心未动）
 
 - [ ] **Step 4: 手工冒烟**
 
@@ -1418,7 +1418,7 @@ CSS 追加：
 .focus-bar { display: flex; align-items: center; margin-top: 10px; }
 ```
 
-- [ ] **Step 2: 检查** — `node tests/syntax-check.js` → OK；`node tests/core.test.js` → 29 passed
+- [ ] **Step 2: 检查** — `node tests/syntax-check.js` → OK；`node tests/core.test.js` → 28 passed
 
 - [ ] **Step 3: 手工冒烟** — 点 ◉ 聚焦：其余区域/卡片毛玻璃、聚焦卡片大计时器每秒跳动、顶栏今日聚焦实时增长；刷新页面 → 聚焦态与计时恢复且继续；点「取消聚焦」→ 毛玻璃解除、事项聚焦时长可在收尾弹窗/控制台 `state.tasks` 验证已累计；聚焦中完成该事项 → 自动结算并解除。
 
@@ -1658,7 +1658,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
 
 启动序列中 `showView('today')` 之前调用 `checkRollover();`（首次启动 `lastActiveDate` 即今天，不会误触发）。
 
-- [ ] **Step 2: 检查** — `node tests/syntax-check.js` → OK；`node tests/core.test.js` → 29 passed
+- [ ] **Step 2: 检查** — `node tests/syntax-check.js` → OK；`node tests/core.test.js` → 28 passed
 
 - [ ] **Step 3: 手工冒烟** — 控制台把 `state.lastActiveDate='2026-08-25'; saveState();` 后刷新页面 → toast、昨日 done 进历史 Tab、遗留项回 inbox 且带「遗」角标、minLine 被清、今日聚焦归零、每日固定事项（若设置）注入；再刷新不重复触发。
 
@@ -2338,7 +2338,7 @@ CSS 检查/追加：视图切换淡入（`#view-today,#view-done,#view-history {
 
 - [ ] **Step 2: 运行全部测试**
 
-Run: `node tests/core.test.js` → 29 passed, 0 failed；Run: `node tests/syntax-check.js` → OK
+Run: `node tests/core.test.js` → 28 passed, 0 failed；Run: `node tests/syntax-check.js` → OK
 
 - [ ] **Step 3: 完整手工冒烟清单（对照 spec §5 逐项）**
 
