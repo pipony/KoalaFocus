@@ -4,11 +4,163 @@
 <meta charset="UTF-8">
 <title>今日待办</title>
 <style>
-/* Task 5 起填充 */
+:root {
+  --bg: #F5F6FA; --card: #FFFFFF; --card-border: #E5E7EB; --text: #1F2430;
+  --text-2: #6B7280; --accent: #4F6DF5; --accent-weak: #EEF1FE;
+  --danger: #EF4444; --ok: #10B981; --shadow: 0 1px 3px rgba(15,23,42,.06);
+  --blur-bg: rgba(245,246,250,.55);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111521; --card: #1A1F2E; --card-border: #2A3040; --text: #E5E7EB;
+    --text-2: #9CA3AF; --accent-weak: #232A45; --shadow: 0 1px 3px rgba(0,0,0,.4);
+    --blur-bg: rgba(17,21,33,.55);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111521; --card: #1A1F2E; --card-border: #2A3040; --text: #E5E7EB;
+  --text-2: #9CA3AF; --accent-weak: #232A45; --shadow: 0 1px 3px rgba(0,0,0,.4);
+  --blur-bg: rgba(17,21,33,.55);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: "Segoe UI", system-ui, sans-serif; font-size: 15px;
+}
+#app { max-width: 860px; margin: 0 auto; padding: 16px 20px 80px; }
+header.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+#date-label { font-size: 17px; font-weight: 600; margin-right: auto; }
+.focus-total { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+.progress-wrap { width: 100%; display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.progress-track { flex: 1; height: 8px; border-radius: 4px; background: var(--card-border); overflow: hidden; }
+#progress-bar { height: 100%; width: 0; background: var(--accent); border-radius: 4px; transition: width .25s; }
+#progress-text { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+nav.tabs { display: flex; gap: 6px; margin: 14px 0 10px; }
+nav.tabs button {
+  border: none; background: transparent; padding: 7px 14px; border-radius: 999px;
+  font-size: 14px; color: var(--text-2); cursor: pointer; font-family: inherit;
+}
+nav.tabs button.active { background: var(--accent); color: #fff; font-weight: 600; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+#search-input {
+  flex: 1; min-width: 160px; padding: 7px 12px; border: 1px solid var(--card-border);
+  border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; font-size: 14px;
+}
+#label-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  border: 1px solid var(--card-border); background: var(--card); border-radius: 999px;
+  font-size: 12px; padding: 3px 10px; cursor: pointer; color: var(--text-2); font-family: inherit;
+}
+.chip.on { color: #fff; font-weight: 600; }
+.btn {
+  border: 1px solid var(--card-border); background: var(--card); color: var(--text);
+  border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: inherit;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { color: var(--danger); }
+section.zone { margin-bottom: 18px; }
+.zone-head { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; }
+.zone-head h2 { font-size: 14px; margin: 0; color: var(--text-2); font-weight: 600; }
+.zone-head .count { font-size: 12px; color: var(--text-2); }
+.zone-head .zone-copy { margin-left: auto; }
+.task-card {
+  background: var(--card); border: 1px solid var(--card-border); border-radius: 12px;
+  box-shadow: var(--shadow); padding: 10px 12px; margin-bottom: 8px;
+  transition: transform .15s, border-color .15s, filter .3s, opacity .3s;
+}
+.task-card:hover { transform: translateY(-1px); }
+.task-card.doing { border-left: 3px solid var(--accent); }
+.task-card.focused { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak), var(--shadow); }
+.task-row { display: flex; align-items: center; gap: 8px; }
+.task-text { flex: 1; cursor: pointer; }
+.task-card.done-item .task-text { color: var(--text-2); text-decoration: line-through; }
+.card-badges { display: flex; align-items: center; gap: 6px; }
+.tag-badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; color: #fff; }
+.sub-count { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.rollover-mark { font-size: 11px; color: var(--danger); border: 1px solid currentColor; border-radius: 4px; padding: 0 3px; }
+.min-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+.min-dot.met { background: var(--ok); }
+.icon-btn {
+  border: none; background: transparent; color: var(--text-2); cursor: pointer;
+  font-size: 13px; padding: 2px 6px; border-radius: 6px; font-family: inherit;
+}
+.icon-btn:hover { color: var(--accent); background: var(--accent-weak); }
+.add-row { display: flex; gap: 8px; }
+.add-row input {
+  flex: 1; padding: 9px 12px; border: 1px solid var(--card-border); border-radius: 10px;
+  background: var(--card); color: var(--text); font-family: inherit; font-size: 14px;
+}
+.add-row input:focus { outline: none; border-color: var(--accent); }
+.empty-hint { color: var(--text-2); font-size: 13px; text-align: center; padding: 18px 0; }
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px);
+  background: var(--text); color: var(--bg); padding: 9px 18px; border-radius: 10px;
+  font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 300;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(15,23,42,.35); display: none;
+  align-items: center; justify-content: center; z-index: 200; padding: 20px;
+}
+.modal-backdrop.show { display: flex; }
+.modal {
+  background: var(--card); border-radius: 14px; padding: 20px; width: 100%;
+  max-width: 520px; max-height: 82vh; overflow: auto; box-shadow: var(--shadow);
+}
+.modal h3 { margin: 0 0 12px; font-size: 16px; }
+.modal .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+body.focusing .blurable { filter: blur(7px); opacity: .55; pointer-events: none; }
+body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: auto; }
+/* Task 7+ 追加样式在此之后 */
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="app">
+  <header class="topbar">
+    <span id="date-label"></span>
+    <span class="focus-total">⏱ 今日聚焦 <span id="focus-total">0min</span></span>
+    <button class="btn" id="btn-theme" title="切换主题">🌓</button>
+    <button class="btn" id="btn-summary">今日收尾</button>
+    <button class="btn" id="btn-export">导出/导入</button>
+    <button class="btn" id="btn-settings">设置</button>
+  </header>
+  <div class="progress-wrap">
+    <div class="progress-track"><div id="progress-bar"></div></div>
+    <span id="progress-text">0/0</span>
+  </div>
+  <nav class="tabs">
+    <button id="tab-today" class="active">今天</button>
+    <button id="tab-done">今日已完成</button>
+    <button id="tab-history">历史归档</button>
+  </nav>
+  <div class="toolbar">
+    <input id="search-input" type="text" placeholder="搜索事项或子任务…（/ 聚焦到此）">
+    <div id="label-chips"></div>
+  </div>
+  <section id="view-today">
+    <section class="zone" id="zone-doing-wrap">
+      <div class="zone-head"><h2>正在处理</h2><span class="count" id="count-doing"></span><button class="btn zone-copy" id="copy-doing">复制</button></div>
+      <div id="zone-doing"></div>
+    </section>
+    <section class="zone" id="zone-inbox-wrap">
+      <div class="zone-head"><h2>Inbox</h2><span class="count" id="count-inbox"></span><button class="btn zone-copy" id="copy-inbox">复制</button></div>
+      <div id="zone-inbox"></div>
+      <div class="add-row" style="margin-top:8px">
+        <input id="input-add" type="text" placeholder="添加今日事项，回车确认">
+        <button class="btn" id="btn-bulk-add">批量添加</button>
+      </div>
+    </section>
+  </section>
+  <section id="view-done" style="display:none">
+    <div class="zone-head"><h2>今日已完成</h2><span class="count" id="count-done"></span><button class="btn zone-copy" id="copy-done">复制</button></div>
+    <div id="zone-donelist"></div>
+  </section>
+  <section id="view-history" style="display:none">
+    <div id="history-list"></div>
+  </section>
+</div>
+<!-- 后续任务在此之后追加弹窗 -->
 <div id="toast" class="toast"></div>
 <script>
 /* PURE CORE START */
@@ -174,7 +326,119 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 /* PURE CORE END */
 
-/* DOM 层：Task 5 起填充 */
+/* ============ DOM 层 ============ */
+const STORAGE_KEY = 'todoApp.v1';
+let state = loadState();
+let currentView = 'today';
+
+function migrate(s) {
+  const d = defaultState();
+  s.settings = Object.assign({}, d.settings, s.settings || {});
+  if (!Array.isArray(s.tasks)) s.tasks = [];
+  if (!Array.isArray(s.history)) s.history = [];
+  if (!Array.isArray(s.settings.labels) || !s.settings.labels.length) s.settings.labels = d.settings.labels;
+  return s;
+}
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) { const s = JSON.parse(raw); if (s && s.version === 1) return migrate(s); }
+  } catch (e) { /* 损坏则重建 */ }
+  const fresh = defaultState();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
+  return fresh;
+}
+function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function save() { saveState(); renderAll(); scheduleBackup(); }   // scheduleBackup 由 Task 16 提供，之前为空函数占位
+function scheduleBackup() {}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => legacyCopy(text));
+  }
+  return Promise.resolve(legacyCopy(text));
+}
+function legacyCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  document.body.removeChild(ta);
+  return ok;
+}
+
+const WEEK = ['日','一','二','三','四','五','六'];
+function renderTopbar() {
+  const d = new Date();
+  document.getElementById('date-label').textContent =
+    (d.getMonth() + 1) + '月' + d.getDate() + '日 周' + WEEK[d.getDay()];
+  document.getElementById('focus-total').textContent = formatDuration(state.todayFocusMs);
+  const p = computeProgress(state.tasks);
+  document.getElementById('progress-bar').style.width = p.pct + '%';
+  document.getElementById('progress-text').textContent = p.done + '/' + p.total + '（' + p.pct + '%）';
+}
+function renderChips() {
+  const box = document.getElementById('label-chips');
+  box.innerHTML = '';
+  state.settings.labels.forEach(l => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (activeLabels.has(l.name) ? ' on' : '');
+    b.textContent = l.name;
+    if (activeLabels.has(l.name)) b.style.background = l.color;
+    b.onclick = () => {   // 过滤逻辑 Task 14 接线；此前仅切换选中态
+      activeLabels.has(l.name) ? activeLabels.delete(l.name) : activeLabels.add(l.name);
+      renderChips();
+    };
+    box.appendChild(b);
+  });
+}
+const activeLabels = new Set();
+
+function renderAll() {
+  renderTopbar(); renderChips();
+  renderToday(); renderDone(); renderHistory();   // 后续任务逐个实现，先定义为空
+}
+function renderToday() {}
+function renderDone() {}
+function renderHistory() {}
+
+function showView(name) {
+  currentView = name;
+  document.body.dataset.view = name;
+  ['today','done','history'].forEach(v => {
+    document.getElementById('view-' + v).style.display = v === name ? '' : 'none';
+    document.getElementById('tab-' + v).classList.toggle('active', v === name);
+  });
+  renderAll();
+}
+['today','done','history'].forEach(v =>
+  document.getElementById('tab-' + v).addEventListener('click', () => showView(v)));
+
+function applyTheme() {
+  document.documentElement.dataset.theme = state.settings.theme === 'auto' ? '' : state.settings.theme;
+}
+document.getElementById('btn-theme').addEventListener('click', () => {
+  const order = ['auto','light','dark'];
+  state.settings.theme = order[(order.indexOf(state.settings.theme) + 1) % order.length];
+  applyTheme(); saveState();
+  showToast('主题：' + { auto: '跟随系统', light: '浅色', dark: '深色' }[state.settings.theme]);
+});
+
+applyTheme();
+showView('today');
 </script>
 </body>
 </html>
