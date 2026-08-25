@@ -136,6 +136,8 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .rest-inner { text-align: center; }
 .rest-title { font-size: 18px; color: var(--text-2); margin-bottom: 8px; }
 #rest-countdown { font-size: 72px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); }
+.minline-form { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 12px 0; }
+.minline-form input[type="number"] { padding: 6px 8px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
 </style>
 </head>
 <body>
@@ -199,6 +201,24 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     <div class="rest-title">休息中</div>
     <div id="rest-countdown">05:00</div>
     <button class="btn" id="btn-rest-exit">跳过休息</button>
+  </div>
+</div>
+<div class="modal-backdrop" id="modal-minline">
+  <div class="modal">
+    <h3>设置最低完成线</h3>
+    <p style="color:var(--text-2);font-size:13px">只对今天有效，明天自动失效。达成后红点变绿点。</p>
+    <div class="minline-form">
+      <label><input type="radio" name="mltype" value="focus" checked> 最低聚焦</label>
+      <input type="number" id="ml-focus-min" min="1" style="width:70px"> 分钟
+      <span style="margin:0 8px;color:var(--text-2)">或</span>
+      <label><input type="radio" name="mltype" value="subtask"> 至少完成</label>
+      <input type="number" id="ml-sub-count" min="1" value="1" style="width:70px"> 个子任务
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="btn-ml-clear">清除完成线</button>
+      <button class="btn" id="btn-ml-cancel">取消</button>
+      <button class="btn primary" id="btn-ml-save">保存</button>
+    </div>
   </div>
 </div>
 <div id="toast" class="toast"></div>
@@ -587,8 +607,9 @@ function dispatchCardAction(e) {
   const id = btn.closest('.task-card').dataset.id;
   if (btn.dataset.action === 'expand') { toggleExpand(id); return; }
   if (btn.dataset.action === 'focus') { startFocus(id); return; }
+  if (btn.dataset.action === 'minline') { openMinLineDialog(id); return; }
   if (btn.dataset.action === 'delete') { deleteTask(id); showToast('已删除'); }
-  // copy/minline 的 handler 由 Task 11/15 在此追加 case
+  // copy 的 handler 由 Task 15 在此追加 case
 }
 
 function renderToday() {
@@ -818,6 +839,46 @@ function endRest() {
   showToast('休息结束，继续吧');
 }
 document.getElementById('btn-rest-exit').addEventListener('click', endRest);
+
+/* ============ Task 11: 最低完成线设置弹窗 ============ */
+let minLineTaskId = null;
+function openMinLineDialog(id) {
+  minLineTaskId = id;
+  const t = state.tasks.find(x => x.id === id);
+  const m = document.getElementById('modal-minline');
+  m.classList.add('show');
+  document.getElementById('ml-focus-min').value = t.minLine && t.minLine.type === 'focus' ? t.minLine.minutes : 30;
+  document.getElementById('ml-sub-count').value = t.minLine && t.minLine.type === 'subtask' ? t.minLine.count : 1;
+  const type = t.minLine ? t.minLine.type : 'focus';
+  m.querySelector('input[name="mltype"][value="' + type + '"]').checked = true;
+}
+document.getElementById('btn-ml-cancel').addEventListener('click', () =>
+  document.getElementById('modal-minline').classList.remove('show'));
+document.getElementById('btn-ml-save').addEventListener('click', () => {
+  const t = state.tasks.find(x => x.id === minLineTaskId);
+  const m = document.getElementById('modal-minline');
+  if (!t) { m.classList.remove('show'); return; }
+  const type = m.querySelector('input[name="mltype"]:checked').value;
+  if (type === 'focus') {
+    const minutes = parseInt(document.getElementById('ml-focus-min').value, 10);
+    if (!minutes || minutes < 1) { showToast('请输入有效分钟数'); return; }
+    t.minLine = { type: 'focus', minutes: minutes };
+  } else {
+    if (!t.subtasks || !t.subtasks.length) { showToast('该事项还没有子任务，无法按子任务设线'); return; }
+    const count = parseInt(document.getElementById('ml-sub-count').value, 10);
+    if (!count || count < 1) { showToast('请输入有效个数'); return; }
+    t.minLine = { type: 'subtask', count: count };
+  }
+  t.minLineMet = false;
+  state.tasks[state.tasks.indexOf(t)] = checkMinLine(t);   // 设置时已达成立即变绿
+  m.classList.remove('show');
+  save();
+});
+document.getElementById('btn-ml-clear').addEventListener('click', () => {
+  const t = state.tasks.find(x => x.id === minLineTaskId);
+  if (t) { t.minLine = null; t.minLineMet = false; save(); }
+  document.getElementById('modal-minline').classList.remove('show');
+});
 
 applyTheme();
 showView('today');
