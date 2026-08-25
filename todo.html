@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>今日待办</title>
+<style>
+/* Task 5 起填充 */
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast"></div>
+<script>
+/* PURE CORE START */
+function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
+
+function todayStr(now) {
+  const d = (now instanceof Date) ? now : new Date(now);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function formatDuration(ms) {
+  const min = Math.floor(Math.max(0, ms) / 60000);
+  const h = Math.floor(min / 60);
+  return h > 0 ? (h + 'h ' + (min % 60) + 'min') : (min + 'min');
+}
+
+let __idCounter = 0;
+function genId(now) {
+  return 't_' + (now || Date.now()) + '_' + (++__idCounter) + String(Math.random() * 1e6 | 0);
+}
+
+function computeProgress(tasks) {
+  const total = tasks.length;
+  const done = tasks.filter(function (t) { return t.zone === 'done'; }).length;
+  return { done: done, total: total, pct: total ? Math.round(done * 100 / total) : 0 };
+}
+
+function defaultState(now) {
+  now = now || Date.now();
+  return {
+    version: 1,
+    lastActiveDate: todayStr(now),
+    tasks: [],
+    todayFocusMs: 0,
+    focusSession: null,
+    history: [],
+    settings: {
+      theme: 'auto',
+      labels: [
+        { name: 'AI处理', color: '#7C5CFF' }, { name: '抛球', color: '#F59E0B' },
+        { name: '脚本', color: '#5B8DEF' },   { name: '时效', color: '#EF4444' },
+        { name: '等回复', color: '#94A3B8' }, { name: '无脑', color: '#10B981' },
+        { name: '深度', color: '#1E293B' },   { name: '沟通', color: '#EC4899' }
+      ],
+      dailyFixed: [],
+      maxDoing: 2,
+      focusRemindMin: 45,
+      restMin: 5,
+      autoBackup: { enabled: false, lastBackupAt: null }
+    }
+  };
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState };
+}
+/* PURE CORE END */
+
+/* DOM 层：Task 5 起填充 */
+</script>
+</body>
+</html>
