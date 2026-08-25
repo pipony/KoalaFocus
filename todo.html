@@ -125,8 +125,52 @@ function parseBulkText(text) {
   return out;
 }
 
+function buildDailySummary(tasks, todayFocusMs, dateStr) {
+  const done = tasks.filter(t => t.zone === 'done');
+  const leftover = tasks.filter(t => t.zone === 'inbox');
+  const doing = tasks.filter(t => t.zone === 'doing');
+  let s = dateStr + '\n聚焦总时长：' + formatDuration(todayFocusMs) + '\n\n';
+  s += '完成 ' + done.length + ' 项\n';
+  s += '遗留 ' + leftover.length + ' 项\n';
+  s += '正在处理 ' + doing.length + ' 项\n';
+  if (done.length) {
+    s += '\n今天完成：\n' + done.map(t =>
+      '✓ ' + t.text + (t.subtasks || []).filter(x => x.done).map(x => '\n    ✓ ' + x.text).join('')
+    ).join('\n') + '\n';
+  }
+  if (leftover.length) s += '\n遗留：\n' + leftover.map(t => '→ ' + t.text).join('\n') + '\n';
+  if (doing.length) s += '\n正在处理：\n' + doing.map(t => '→ ' + t.text).join('\n') + '\n';
+  return s.replace(/\n+$/, '');
+}
+
+function checkMinLine(task) {
+  if (!task.minLine || task.minLineMet) return task;
+  if (task.minLine.type === 'focus' && task.focusMsToday >= task.minLine.minutes * 60000)
+    return Object.assign({}, task, { minLineMet: true });
+  if (task.minLine.type === 'subtask' &&
+      (task.subtasks || []).filter(s => s.done).length >= task.minLine.count)
+    return Object.assign({}, task, { minLineMet: true });
+  return task;
+}
+
+function settleFocusSession(state, nowMs) {
+  if (!state.focusSession) return { state: state, sessionMs: 0, needRest: false };
+  const sessionMs = Math.max(0, nowMs - state.focusSession.startAt);
+  const next = deepClone(state);
+  const idx = next.tasks.findIndex(t => t.id === next.focusSession.taskId);
+  if (idx >= 0) {
+    next.tasks[idx].focusMs += sessionMs;
+    next.tasks[idx].focusMsToday += sessionMs;
+    next.tasks[idx] = checkMinLine(next.tasks[idx]);
+  }
+  next.todayFocusMs += sessionMs;
+  next.focusSession = null;
+  const needRest = sessionMs >= next.settings.focusRemindMin * 60000;
+  return { state: next, sessionMs: sessionMs, needRest: needRest };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText };
+  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession };
 }
 /* PURE CORE END */
 

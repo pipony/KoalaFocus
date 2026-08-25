@@ -153,5 +153,89 @@ t('解析：重复标签去重', () => {
   eq(r[0].labels, ['脚本']);
 });
 
+// ---- Task 4 ----
+t('收尾总结完整格式', () => {
+  const tasks = [
+    mkTask('done', 'MySQL 压测', { subtasks: [
+      { id: '1', text: '建表造数', done: true }, { id: '2', text: '跑压测', done: true }] }),
+    mkTask('done', '监控脚本'),
+    mkTask('inbox', '整理监控结论'),
+    mkTask('doing', 'Hermes 排查')
+  ];
+  eq(core.buildDailySummary(tasks, 4980000, '2026-08-26'),
+`2026-08-26
+聚焦总时长：1h 23min
+
+完成 2 项
+遗留 1 项
+正在处理 1 项
+
+今天完成：
+✓ MySQL 压测
+    ✓ 建表造数
+    ✓ 跑压测
+✓ 监控脚本
+
+遗留：
+→ 整理监控结论
+
+正在处理：
+→ Hermes 排查`);
+});
+t('收尾总结：空节省略、无小时段时长', () => {
+  const tasks = [mkTask('done', 'A'), mkTask('inbox', 'B')];
+  eq(core.buildDailySummary(tasks, 1200000, '2026-08-26'),
+`2026-08-26
+聚焦总时长：20min
+
+完成 1 项
+遗留 1 项
+正在处理 0 项
+
+今天完成：
+✓ A
+
+遗留：
+→ B`);
+});
+t('checkMinLine：focus 型按当日聚焦达成', () => {
+  eq(core.checkMinLine(mkTask('doing', 'A', { minLine: { type: 'focus', minutes: 30 }, focusMsToday: 1800000 })).minLineMet, true);
+  eq(core.checkMinLine(mkTask('doing', 'A', { minLine: { type: 'focus', minutes: 30 }, focusMsToday: 1799999 })).minLineMet, false);
+});
+t('checkMinLine：subtask 型按已勾选总数达成', () => {
+  const t1 = mkTask('doing', 'A', { minLine: { type: 'subtask', count: 1 },
+    subtasks: [{ id: '1', text: 'x', done: true }, { id: '2', text: 'y', done: false }] });
+  eq(core.checkMinLine(t1).minLineMet, true);
+});
+t('checkMinLine：已绿不再计算、未设置返回原对象语义', () => {
+  const t1 = mkTask('doing', 'A', { minLine: { type: 'focus', minutes: 30 }, minLineMet: true, focusMsToday: 0 });
+  eq(core.checkMinLine(t1).minLineMet, true);
+  eq(core.checkMinLine(mkTask('inbox', 'B')).minLineMet, false);
+});
+t('settleFocusSession：累计到事项与今日总量并触发min-line', () => {
+  const task = mkTask('doing', 'A', { minLine: { type: 'focus', minutes: 30 } });
+  const s = mkState({ tasks: [task], todayFocusMs: 60000, focusSession: { taskId: task.id, startAt: 1000000 } });
+  const r = core.settleFocusSession(s, 1000000 + 1800000);   // 会话30min
+  eq(r.state.focusSession, null);
+  eq(r.state.tasks[0].focusMs, 1800000);
+  eq(r.state.tasks[0].focusMsToday, 1800000);
+  eq(r.state.todayFocusMs, 1860000);
+  eq(r.state.tasks[0].minLineMet, true);
+  eq(r.needRest, false);   // 30 < 45
+});
+t('settleFocusSession：达到提醒阈值', () => {
+  const task = mkTask('doing', 'A');
+  const s = mkState({ tasks: [task], focusSession: { taskId: task.id, startAt: 0 } });
+  const r = core.settleFocusSession(s, 46 * 60000);
+  eq(r.needRest, true); eq(r.sessionMs, 46 * 60000);
+});
+t('settleFocusSession：无会话/事项已删仍安全', () => {
+  const s0 = mkState({});
+  eq(core.settleFocusSession(s0, 100).state.todayFocusMs, 0);
+  const s1 = mkState({ todayFocusMs: 0, focusSession: { taskId: 'ghost', startAt: 0 } });
+  const r1 = core.settleFocusSession(s1, 60000);
+  eq(r1.state.todayFocusMs, 60000); eq(r1.state.tasks, []);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
