@@ -123,6 +123,9 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .sub-check { width: 14px; height: 14px; accent-color: var(--accent); }
 .label-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .expand-btn { font-size: 12px; }
+.drop-hint { outline: 2px dashed var(--accent); outline-offset: 2px; border-radius: 12px; }
+#tab-done.drop-hint { outline-offset: -2px; }
+.task-card.dragging { opacity: .45; }
 </style>
 </head>
 <body>
@@ -607,6 +610,75 @@ document.getElementById('btn-theme').addEventListener('click', () => {
   applyTheme(); saveState();
   showToast('主题：' + { auto: '跟随系统', light: '浅色', dark: '深色' }[state.settings.theme]);
 });
+
+/* ============ Task 8: 拖拽排序与区域互移 ============ */
+let dragCtx = null;   // {taskId, fromZone}
+
+function moveTask(id, toZone, toIndex) {
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) return false;
+  if (toZone === 'doing' && t.zone !== 'doing' &&
+      zoneTasks('doing').length >= state.settings.maxDoing) {
+    showToast('正在处理最多 ' + state.settings.maxDoing + ' 条，先移出一条'); return false;
+  }
+  state.tasks = state.tasks.filter(x => x.id !== id);
+  t.zone = toZone;
+  t.completedAt = toZone === 'done' ? Date.now() : null;
+  const zoneList = state.tasks.filter(x => x.zone === toZone && x.id !== id);
+  const idxInState = toIndex == null ? Infinity : toIndex;
+  // 重建整表：目标区按新顺序、其余区保持原相对顺序
+  const before = zoneList.slice(0, idxInState), after = zoneList.slice(idxInState);
+  state.tasks = state.tasks.filter(x => x.zone !== toZone).concat(before, [t], after);
+  save();
+  return true;
+}
+
+function bindDragSource(container) {
+  container.addEventListener('dragstart', e => {
+    const card = e.target.closest('.task-card');
+    if (!card) return;
+    dragCtx = { taskId: card.dataset.id, fromZone: card.closest('[id^="zone-"]').id.replace('zone-','') };
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', card.dataset.id);
+  });
+  container.addEventListener('dragend', () => {
+    dragCtx = null; clearDropHints();
+    container.querySelectorAll('.task-card.dragging').forEach(c => c.classList.remove('dragging'));
+  });
+}
+function bindDropTarget(el, zone, getInsertIndex) {
+  el.addEventListener('dragover', e => { e.preventDefault(); markDropHint(el); });
+  el.addEventListener('dragleave', () => unmarkDropHint(el));
+  el.addEventListener('drop', e => {
+    e.preventDefault(); unmarkDropHint(el);
+    if (!dragCtx) return;
+    const idx = getInsertIndex ? getInsertIndex(e) : null;
+    moveTask(dragCtx.taskId, zone, idx);
+  });
+}
+function markDropHint(el) { el.classList.add('drop-hint'); }
+function unmarkDropHint(el) { el.classList.remove('drop-hint'); }
+function clearDropHints() { document.querySelectorAll('.drop-hint').forEach(unmarkDropHint); }
+
+// 今日页两区：源 + 目标（含按鼠标位置计算插入下标）
+['zone-doing','zone-inbox'].forEach(zid => {
+  const el = document.getElementById(zid);
+  bindDragSource(el);
+  bindDropTarget(el, zid.replace('zone-',''), e => {
+    const cards = [...el.querySelectorAll('.task-card:not([data-id="' + dragCtx.taskId + '"])')];
+    for (let i = 0; i < cards.length; i++) {
+      const r = cards[i].getBoundingClientRect();
+      if (e.clientY < r.top + r.height / 2) return i;
+    }
+    return cards.length;
+  });
+});
+// 拖到「今日已完成」Tab = 完成
+bindDropTarget(document.getElementById('tab-done'), 'done', null);
+// doing 满员时 Tab 也给视觉反馈：dragover 里若 doing 满且目标为 doing 由 moveTask 拦截并 toast
+
+document.getElementById('tab-done').addEventListener('drop', () => { if (dragCtx) showToast('已完成 ✓'); });
 
 applyTheme();
 showView('today');
