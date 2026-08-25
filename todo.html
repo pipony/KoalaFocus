@@ -127,6 +127,15 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 #tab-done.drop-hint { outline-offset: -2px; }
 .task-card.dragging { opacity: .45; }
 .focus-bar { display: flex; align-items: center; margin-top: 10px; }
+#rest-overlay {
+  position: fixed; inset: 0; z-index: 400; display: none;
+  align-items: center; justify-content: center;
+  background: var(--blur-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+#rest-overlay.show { display: flex; }
+.rest-inner { text-align: center; }
+.rest-title { font-size: 18px; color: var(--text-2); margin-bottom: 8px; }
+#rest-countdown { font-size: 72px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); }
 </style>
 </head>
 <body>
@@ -175,6 +184,23 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
   </section>
 </div>
 <!-- 后续任务在此之后追加弹窗 -->
+<div class="modal-backdrop" id="modal-rest-prompt">
+  <div class="modal" style="text-align:center">
+    <h3 style="font-size:22px">站起来动动老胳膊老腿！！！</h3>
+    <p style="color:var(--text-2)">本次聚焦已满 {{min}} 分钟</p>
+    <div class="modal-actions" style="justify-content:center">
+      <button class="btn primary" id="btn-rest-go">休息一下</button>
+      <button class="btn" id="btn-rest-skip">暂时忽略</button>
+    </div>
+  </div>
+</div>
+<div id="rest-overlay">
+  <div class="rest-inner">
+    <div class="rest-title">休息中</div>
+    <div id="rest-countdown">05:00</div>
+    <button class="btn" id="btn-rest-exit">跳过休息</button>
+  </div>
+</div>
 <div id="toast" class="toast"></div>
 <script>
 /* PURE CORE START */
@@ -759,7 +785,39 @@ function applyBlurTargets() {
     .forEach(el => el.classList.toggle('blurable', on && !el.classList.contains('focused')));
 }
 
-function showRestPrompt() {}   // Task 10 实现
+/* ============ Task 10: 休息提醒与全屏休息倒计时 ============ */
+function showRestPrompt() {
+  const m = document.getElementById('modal-rest-prompt');
+  m.querySelector('p').textContent = '本次聚焦已满 ' + state.settings.focusRemindMin + ' 分钟';
+  m.classList.add('show');
+}
+document.getElementById('btn-rest-skip').addEventListener('click', () =>
+  document.getElementById('modal-rest-prompt').classList.remove('show'));
+document.getElementById('btn-rest-go').addEventListener('click', () => {
+  document.getElementById('modal-rest-prompt').classList.remove('show');
+  startRest();
+});
+
+let restTimer = null, restEndsAt = 0;
+function startRest() {
+  restEndsAt = Date.now() + state.settings.restMin * 60000;
+  document.body.classList.add('resting');
+  document.getElementById('rest-overlay').classList.add('show');
+  restTimer = setInterval(() => {
+    const left = restEndsAt - Date.now();
+    if (left <= 0) { endRest(); return; }
+    const s = Math.ceil(left / 1000);
+    document.getElementById('rest-countdown').textContent =
+      String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }, 500);
+}
+function endRest() {
+  clearInterval(restTimer); restTimer = null;
+  document.body.classList.remove('resting');
+  document.getElementById('rest-overlay').classList.remove('show');
+  showToast('休息结束，继续吧');
+}
+document.getElementById('btn-rest-exit').addEventListener('click', endRest);
 
 applyTheme();
 showView('today');
