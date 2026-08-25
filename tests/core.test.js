@@ -115,5 +115,43 @@ t('昨日无完成且无聚焦不生成空历史条目', () => {
   eq(r.state.history.length, 0);
 });
 
+// ---- Task 3: 复制格式与批量解析 ----
+t('格式化：完成态前缀/标签#/缩进子任务', () => {
+  const tasks = [
+    mkTask('inbox', 'MySQL 压测', { labels: ['脚本', '时效'], subtasks: [
+      { id: 's1', text: '建表造数', done: false }, { id: 's2', text: '跑压测', done: true }] })
+  ];
+  eq(core.formatTasksAsText(tasks),
+    '[ ] MySQL 压测  #脚本 #时效\n    [ ] 建表造数\n    [x] 跑压测');
+});
+t('格式化：完成事项为 [x]', () => {
+  eq(core.formatTasksAsText([mkTask('done', 'A', { labels: ['沟通'] })]), '[x] A  #沟通');
+});
+t('解析：普通多行每行一事', () => {
+  eq(core.parseBulkText('任务A\n任务B'), [
+    { text: '任务A', labels: [], subtasks: [], done: false },
+    { text: '任务B', labels: [], subtasks: [], done: false }]);
+});
+t('解析：剥离 - [ ] / [x] 前缀，[x] 视为完成', () => {
+  const r = core.parseBulkText('- [ ] 任务A\n- [x] 任务B');
+  eq(r[0], { text: '任务A', labels: [], subtasks: [], done: false });
+  eq(r[1].done, true);
+});
+t('解析：复制格式完整恢复（round-trip）', () => {
+  const text = '[ ] MySQL 压测  #脚本 #时效\n    [ ] 建表造数\n    [x] 跑压测\n[x] 回复 XXX  #沟通';
+  const r = core.parseBulkText(text);
+  eq(r[0], { text: 'MySQL 压测', labels: ['脚本', '时效'],
+    subtasks: [{ text: '建表造数', done: false }, { text: '跑压测', done: true }], done: false });
+  eq(r[1], { text: '回复 XXX', labels: ['沟通'], subtasks: [], done: true });
+});
+t('解析：空行跳过；无前置任务的缩进行按独立事项', () => {
+  const r = core.parseBulkText('\n  孤行\n');
+  eq(r.length, 1); eq(r[0].text, '孤行');
+});
+t('解析：重复标签去重', () => {
+  const r = core.parseBulkText('A #脚本 #脚本');
+  eq(r[0].labels, ['脚本']);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

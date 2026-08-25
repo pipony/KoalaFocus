@@ -99,8 +99,34 @@ function rollover(state, now) {
   return { state: next, changed: true };
 }
 
+function formatTasksAsText(tasks) {
+  return tasks.map(t => {
+    let line = (t.zone === 'done' ? '[x] ' : '[ ] ') + t.text;
+    if (t.labels && t.labels.length) line += '  ' + t.labels.map(l => '#' + l).join(' ');
+    return [line].concat((t.subtasks || []).map(s => '    ' + (s.done ? '[x] ' : '[ ] ') + s.text)).join('\n');
+  }).join('\n');
+}
+
+function parseBulkText(text) {
+  const out = [];
+  String(text || '').split(/\r?\n/).forEach(raw => {
+    if (!raw.trim()) return;
+    const indented = /^[ \t]/.test(raw);
+    const line = raw.trim();
+    let done = false, body = line;
+    const m = line.match(/^-\s*\[( |x|X)\]\s*(.*)$/) || line.match(/^\[( |x|X)\]\s*(.*)$/);
+    if (m) { done = m[1].toLowerCase() === 'x'; body = m[2]; }
+    const labels = [];
+    body = body.replace(/#([^\s#]+)/g, (_, name) => { if (!labels.includes(name)) labels.push(name); return ''; })
+      .replace(/\s{2,}/g, ' ').trim();
+    if (indented && out.length > 0) out[out.length - 1].subtasks.push({ text: body, done: done });
+    else out.push({ text: body, labels: labels, subtasks: [], done: done });
+  });
+  return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover };
+  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText };
 }
 /* PURE CORE END */
 
