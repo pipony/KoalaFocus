@@ -101,11 +101,12 @@ t('聚焦会话跨天：已聚焦时长入昨日归档、会话延续到今天',
   eq(r.state.focusSession.startAt, now.getTime());               // 会话起点重置为现在
   eq(r.state.todayFocusMs, 0);
 });
-t('多天空缺一次性合并，只为最后活跃日建历史条目', () => {
-  const s = mkState({ lastActiveDate: '2026-08-20', tasks: [mkTask('inbox', 'B')] });
+t('多天空缺一次性合并，只为最后活跃日建条目、中间空日不建', () => {
+  const s = mkState({ lastActiveDate: '2026-08-20', tasks: [mkTask('done', 'A', { completedAt: 5 }), mkTask('inbox', 'B')] });
   const r = core.rollover(s, new Date(2026, 7, 26, 9, 0));
-  eq(r.state.history.length, 1);
+  eq(r.state.history.length, 1);              // 只有 8-20 一条，8-21..8-25 不生成
   eq(r.state.history[0].date, '2026-08-20');
+  eq(r.state.history[0].tasks.map(x => x.text), ['A']);
   eq(by(r.state, 'B').zone, 'inbox');
 });
 t('昨日无完成且无聚焦不生成空历史条目', () => {

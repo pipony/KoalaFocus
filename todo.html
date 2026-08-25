@@ -75,9 +75,7 @@ function rollover(state, now) {
     next.focusSession = { taskId: next.focusSession.taskId, startAt: nowMs };
   }
   const doneTasks = next.tasks.filter(t => t.zone === 'done');
-  // 多天空缺（>1 天）时为最后活跃日建条目（中间空日期不生成）；仅隔一天时只有实际内容才建条目
-  const gapDays = Math.round((new Date(today + 'T00:00:00').getTime() - new Date(state.lastActiveDate + 'T00:00:00').getTime()) / 86400000);
-  if (doneTasks.length > 0 || archivedFocusMs > 0 || gapDays > 1) {
+  if (doneTasks.length > 0 || archivedFocusMs > 0) {
     const entry = next.history.find(h => h.date === next.lastActiveDate);
     if (entry) { entry.focusMs += archivedFocusMs; entry.tasks = entry.tasks.concat(doneTasks); }
     else next.history.unshift({ date: next.lastActiveDate, focusMs: archivedFocusMs, tasks: doneTasks });
