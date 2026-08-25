@@ -113,6 +113,9 @@ section.zone { margin-bottom: 18px; }
 body.focusing .blurable { filter: blur(7px); opacity: .55; pointer-events: none; }
 body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: auto; }
 /* Task 7+ 追加样式在此之后 */
+.card-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.task-card:hover .card-actions, .task-card.focused .card-actions { opacity: 1; }
+.task-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 </style>
 </head>
 <body>
@@ -411,7 +414,99 @@ function renderAll() {
   renderTopbar(); renderChips();
   renderToday(); renderDone(); renderHistory();   // 后续任务逐个实现，先定义为空
 }
-function renderToday() {}
+function zoneTasks(zone) { return state.tasks.filter(t => t.zone === zone); }
+
+function createTask(text, labels, subtasks) {
+  const now = Date.now();
+  const t = { id: genId(now), text: text, zone: 'inbox', labels: labels || [],
+    subtasks: (subtasks || []).map(s => ({ id: genId(now), text: s.text, done: !!s.done })),
+    focusMs: 0, focusMsToday: 0, minLine: null, minLineMet: false, rolledOver: false,
+    createdAt: now, completedAt: null };
+  state.tasks.push(t);
+  return t;
+}
+
+function labelColor(name) {
+  const l = state.settings.labels.find(x => x.name === name);
+  return l ? l.color : '#94A3B8';
+}
+
+function buildTaskCard(task) {
+  const card = document.createElement('div');
+  card.className = 'task-card' + (task.zone === 'doing' ? ' doing' : '') + (task.zone === 'done' ? ' done-item' : '');
+  card.dataset.id = task.id;
+  card.draggable = true;   // Task 8 使用
+  const doneSubs = (task.subtasks || []).filter(s => s.done).length;
+  const labelsHtml = task.labels.map(l =>
+    '<span class="tag-badge" style="background:' + labelColor(l) + '">' + escapeHtml(l) + '</span>').join('');
+  card.innerHTML =
+    '<div class="task-row">' +
+      '<input type="checkbox" class="task-check" ' + (task.zone === 'done' ? 'checked' : '') + '>' +
+      '<span class="task-text">' + escapeHtml(task.text) + '</span>' +
+      '<span class="card-badges">' + labelsHtml +
+        (task.subtasks && task.subtasks.length ? '<span class="sub-count">' + doneSubs + '/' + task.subtasks.length + '</span>' : '') +
+        (task.rolledOver ? '<span class="rollover-mark" title="昨日遗留">遗</span>' : '') +
+        (task.minLine ? '<span class="min-dot' + (task.minLineMet ? ' met' : '') + '" title="最低完成线"></span>' : '') +
+      '</span>' +
+      '<span class="card-actions">' +
+        '<button class="icon-btn" data-action="focus" title="聚焦">◉</button>' +
+        '<button class="icon-btn" data-action="copy" title="复制">⧉</button>' +
+        '<button class="icon-btn" data-action="minline" title="最低完成线">⑂</button>' +
+        '<button class="icon-btn" data-action="delete" title="删除">✕</button>' +
+      '</span>' +
+    '</div>' +
+    '<div class="subtask-box" style="display:none"></div>';   // Task 7 使用
+  return card;
+}
+
+function completeTask(id) {
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) return;
+  t.zone = 'done';
+  t.completedAt = Date.now();
+  save();
+}
+
+function deleteTask(id) {
+  state.tasks = state.tasks.filter(x => x.id !== id);
+  save();
+}
+
+function dispatchCardAction(e) {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) {
+    const chk = e.target.closest('.task-check');
+    if (chk) { completeTask(chk.closest('.task-card').dataset.id); }
+    return;
+  }
+  const id = btn.closest('.task-card').dataset.id;
+  if (btn.dataset.action === 'delete') { deleteTask(id); showToast('已删除'); }
+  // focus/copy/minline 的 handler 由 Task 8/9/11/15 在此 switch 追加 case
+}
+
+function renderToday() {
+  const doingBox = document.getElementById('zone-doing');
+  const inboxBox = document.getElementById('zone-inbox');
+  doingBox.innerHTML = ''; inboxBox.innerHTML = '';
+  const doing = zoneTasks('doing'), inbox = zoneTasks('inbox');
+  document.getElementById('count-doing').textContent = doing.length + '/' + state.settings.maxDoing;
+  document.getElementById('count-inbox').textContent = String(inbox.length);
+  doing.forEach(t => doingBox.appendChild(buildTaskCard(t)));
+  inbox.forEach(t => inboxBox.appendChild(buildTaskCard(t)));
+  if (!doing.length) doingBox.innerHTML = '<div class="empty-hint">从 inbox 拖入或聚焦一条，最多 ' + state.settings.maxDoing + ' 条</div>';
+  if (!inbox.length) inboxBox.innerHTML = '<div class="empty-hint">Inbox 为空，用下方输入框添加</div>';
+}
+['zone-doing','zone-inbox'].forEach(zid =>
+  document.getElementById(zid).addEventListener('click', dispatchCardAction));
+
+document.getElementById('input-add').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const text = e.target.value.trim();
+  if (!text) return;
+  createTask(text);
+  e.target.value = '';
+  save();
+});
 function renderDone() {}
 function renderHistory() {}
 
