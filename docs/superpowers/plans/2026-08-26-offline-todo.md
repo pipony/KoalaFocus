@@ -1025,6 +1025,7 @@ function completeTask(id) {
 }
 
 function deleteTask(id) {
+  if (state.focusSession && state.focusSession.taskId === id) exitFocus();   // Task 9 修复轮：防止删除聚焦卡导致死锁
   state.tasks = state.tasks.filter(x => x.id !== id);
   save();
 }
@@ -1127,6 +1128,7 @@ function refreshCard(id) {
   const fresh = buildTaskCard(t);
   if (expandedIds.has(id)) fillSubtaskBox(fresh, t);
   old.replaceWith(fresh);
+  applyFocusUi(); applyBlurTargets();   // Task 9 修复轮：单卡片重绘后恢复聚焦态（无会话时为 no-op）
 }
 
 function fillSubtaskBox(card, task) {
