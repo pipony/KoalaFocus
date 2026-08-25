@@ -126,6 +126,7 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .drop-hint { outline: 2px dashed var(--accent); outline-offset: 2px; border-radius: 12px; }
 #tab-done.drop-hint { outline-offset: -2px; }
 .task-card.dragging { opacity: .45; }
+.focus-bar { display: flex; align-items: center; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -423,6 +424,8 @@ const activeLabels = new Set();
 function renderAll() {
   renderTopbar(); renderChips();
   renderToday(); renderDone(); renderHistory();   // 后续任务逐个实现，先定义为空
+  applyFocusUi();   // Task 9：重绘后重挂 focused 态与计时条
+  applyBlurTargets();
 }
 function zoneTasks(zone) { return state.tasks.filter(t => t.zone === zone); }
 
@@ -473,6 +476,7 @@ function buildTaskCard(task) {
 }
 
 function completeTask(id) {
+  if (state.focusSession && state.focusSession.taskId === id) exitFocus();
   const t = state.tasks.find(x => x.id === id);
   if (!t) return;
   t.zone = 'done';
@@ -554,8 +558,9 @@ function dispatchCardAction(e) {
   }
   const id = btn.closest('.task-card').dataset.id;
   if (btn.dataset.action === 'expand') { toggleExpand(id); return; }
+  if (btn.dataset.action === 'focus') { startFocus(id); return; }
   if (btn.dataset.action === 'delete') { deleteTask(id); showToast('已删除'); }
-  // focus/copy/minline 的 handler 由 Task 8/9/11/15 在此 switch 追加 case
+  // copy/minline 的 handler 由 Task 11/15 在此追加 case
 }
 
 function renderToday() {
@@ -680,8 +685,83 @@ bindDropTarget(document.getElementById('tab-done'), 'done', null);
 
 document.getElementById('tab-done').addEventListener('drop', () => { if (dragCtx) showToast('已完成 ✓'); });
 
+/* ============ Task 9: 聚焦模式与计时 ============ */
+let focusTimer = null;
+
+function startFocus(id) {
+  if (state.focusSession) { showToast('已在聚焦中，先退出当前聚焦'); return; }
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) return;
+  state.focusSession = { taskId: id, startAt: Date.now() };
+  saveState();
+  expandedIds.add(id);
+  applyFocusUi();
+  renderAll();
+  showToast('聚焦开始，其余界面已模糊');
+}
+
+function exitFocus() {
+  if (!state.focusSession) return;
+  const r = settleFocusSession(state, Date.now());
+  state = r.state;
+  save();
+  applyFocusUi();
+  if (r.needRest) showRestPrompt();   // Task 10 实现，先留空函数
+}
+
+function applyFocusUi() {
+  const on = !!state.focusSession;
+  document.body.classList.toggle('focusing', on);
+  document.querySelectorAll('.task-card').forEach(c => c.classList.remove('focused'));
+  if (on) {
+    const card = document.querySelector('.task-card[data-id="' + state.focusSession.taskId + '"]');
+    if (card) {
+      card.classList.add('focused');
+      // 聚焦卡片内加计时条与退出按钮
+      let bar = card.querySelector('.focus-bar');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.className = 'focus-bar';
+        bar.innerHTML = '<span class="focus-clock" style="font-size:26px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums"></span>' +
+          '<button class="btn danger" data-action="exitfocus" style="margin-left:auto">取消聚焦</button>';
+        card.appendChild(bar);
+        bar.querySelector('[data-action="exitfocus"]').addEventListener('click', exitFocus);
+      }
+    }
+  }
+}
+
+function focusTick() {
+  if (!state.focusSession) return;
+  const elapsed = Date.now() - state.focusSession.startAt;
+  const shown = state.todayFocusMs + elapsed;   // 今日总聚焦实时含进行中会话
+  document.getElementById('focus-total').textContent = formatDuration(shown);
+  const clock = document.querySelector('.task-card.focused .focus-clock');
+  if (clock) clock.textContent = formatDuration(elapsed);
+}
+setInterval(focusTick, 1000);
+
+function ensureFocusUi() {   // 刷新/重开后恢复聚焦态
+  if (!state.focusSession) return;
+  const t = state.tasks.find(x => x.id === state.focusSession.taskId);
+  if (!t) { exitFocus(); return; }
+  expandedIds.add(t.id);
+  applyFocusUi();
+  renderAll();   // renderAll 会重建卡片，随后 applyFocusUi 补挂 focus-bar
+  applyFocusUi();
+}
+
+function applyBlurTargets() {
+  const on = !!state.focusSession;
+  document.querySelectorAll('header.topbar, nav.tabs, .toolbar, .task-card, .zone-head, .add-row')
+    .forEach(el => el.classList.toggle('blurable', on && !el.classList.contains('focused')));
+}
+
+function showRestPrompt() {}   // Task 10 实现
+
 applyTheme();
 showView('today');
+ensureFocusUi();
 </script>
 </body>
 </html>
