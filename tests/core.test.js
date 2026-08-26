@@ -237,5 +237,25 @@ t('settleFocusSession：无会话/事项已删仍安全', () => {
   eq(r1.state.todayFocusMs, 60000); eq(r1.state.tasks, []);
 });
 
+// ---- 批次2：标签优先级 / 提醒字段 ----
+t('labelPriorityOf：无标签为0', () => {
+  eq(core.labelPriorityOf(mkTask('inbox', 'A'), [{name:'脚本',color:'#000'}]), 0);
+});
+t('labelPriorityOf：多标签取最优先（最大值）', () => {
+  const labels = [{name:'脚本',color:'#000',priority:2},{name:'无脑',color:'#000',priority:-1},{name:'时效',color:'#000'}];
+  eq(core.labelPriorityOf(mkTask('inbox','A',{labels:['无脑']}), labels), -1);
+  eq(core.labelPriorityOf(mkTask('inbox','A',{labels:['脚本','无脑']}), labels), 2);
+});
+t('labelPriorityOf：标签缺 priority 字段按0', () => {
+  eq(core.labelPriorityOf(mkTask('inbox','A',{labels:['时效']}), [{name:'时效',color:'#000'}]), 0);
+});
+t('rollover：提醒字段跨天清空', () => {
+  const s = mkState({ lastActiveDate: '2026-08-25',
+    tasks: [mkTask('inbox','B',{remindAt: 12345, reminded: true})] });
+  const r = core.rollover(s, new Date(2026, 7, 26, 9, 0));
+  eq(by(r.state, 'B').remindAt, null);
+  eq(by(r.state, 'B').reminded, false);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

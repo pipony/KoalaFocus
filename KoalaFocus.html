@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>今日待办</title>
+<title>KoalaFocus · 今日待办</title>
 <style>
 :root {
   --bg: #F5F6FA; --card: #FFFFFF; --card-border: #E5E7EB; --text: #1F2430;
@@ -152,11 +152,23 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } }
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 4px; }
+/* 批次2 增补 */
+#brand { font-size: 17px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+#date-label { font-weight: 500; }
+.add-done-toggle { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text-2); white-space: nowrap; cursor: pointer; }
+.add-done-toggle input { accent-color: var(--accent); }
+.text-edit { flex: 1; min-width: 0; font: inherit; padding: 2px 6px; border: 1px solid var(--accent); border-radius: 6px; background: var(--card); color: var(--text); }
+.focus-badge { font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.remind-badge { font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.lbl-prio { width: 54px; padding: 6px 6px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
+.settings-row select { padding: 5px 8px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
 </style>
 </head>
 <body>
 <div id="app">
   <header class="topbar">
+    <span id="brand">🐨 KoalaFocus</span>
     <span id="date-label"></span>
     <span class="focus-total">⏱ 今日聚焦 <span id="focus-total">0min</span></span>
     <button class="btn" id="btn-theme" title="切换主题">🌓</button>
@@ -183,10 +195,11 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
       <div id="zone-doing"></div>
     </section>
     <section class="zone" id="zone-inbox-wrap">
-      <div class="zone-head"><h2>Inbox</h2><span class="count" id="count-inbox"></span><button class="btn zone-copy" id="copy-inbox">复制</button></div>
+      <div class="zone-head"><h2>Inbox</h2><span class="count" id="count-inbox"></span><button class="btn" id="btn-sort-inbox" title="按标签优先级排序（优先级在设置页配置）">⇅ 排序</button><button class="btn zone-copy" id="copy-inbox">复制</button></div>
       <div id="zone-inbox"></div>
       <div class="add-row" style="margin-top:8px">
         <input id="input-add" type="text" placeholder="添加今日事项，回车确认">
+        <label class="add-done-toggle" title="勾选后回车添加的事项直接进入今日已完成"><input type="checkbox" id="add-done-toggle">直接完成</label>
         <button class="btn" id="btn-bulk-add">批量添加</button>
       </div>
     </section>
@@ -284,6 +297,19 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
       <label>休息时长 <input type="number" id="set-rest-min" min="1" style="width:64px"> 分钟</label>
       <label>正在处理上限 <input type="number" id="set-max-doing" min="1" style="width:64px"> 条</label>
     </div>
+    <h4 style="margin-top:18px">外观</h4>
+    <div class="settings-row">
+      <label>字体 <input type="text" id="set-font" list="font-list" placeholder="留空=默认" style="width:150px"></label>
+      <datalist id="font-list">
+        <option value="微软雅黑"></option><option value="等线"></option><option value="黑体"></option>
+        <option value="宋体"></option><option value="楷体"></option><option value="Segoe UI"></option>
+      </datalist>
+      <label>字号 <select id="set-fontsize">
+        <option value="s">小</option><option value="m" selected>标准</option>
+        <option value="l">大</option><option value="xl">特大</option>
+      </select></label>
+    </div>
+    <p style="color:var(--text-2);font-size:12px">字体只能选用本机已安装的（离线无法下载）；字号为整体缩放。标签行的优先级数字越大越靠前，可为负。</p>
     <h4 style="margin-top:18px">自动备份</h4>
     <p id="backup-status" style="font-size:13px;color:var(--text-2)"></p>
     <button class="btn" id="btn-bind-backup">绑定备份文件</button>
@@ -297,6 +323,29 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     <div class="modal-actions">
       <button class="btn" id="btn-summary-close">关闭</button>
       <button class="btn primary" id="btn-summary-copy">一键复制</button>
+    </div>
+  </div>
+</div>
+<div class="modal-backdrop" id="modal-remind">
+  <div class="modal">
+    <h3>设置提醒</h3>
+    <p id="remind-task-name" style="color:var(--text-2);font-size:13px"></p>
+    <div class="minline-form"><label>今天 <input type="time" id="remind-time"></label></div>
+    <p style="color:var(--text-2);font-size:12px">仅页面打开时提醒；错过的时间在下次打开时补弹。</p>
+    <div class="modal-actions">
+      <button class="btn" id="btn-remind-clear">清除提醒</button>
+      <button class="btn" id="btn-remind-cancel">取消</button>
+      <button class="btn primary" id="btn-remind-save">保存</button>
+    </div>
+  </div>
+</div>
+<div class="modal-backdrop" id="modal-reminder-fire">
+  <div class="modal" style="text-align:center">
+    <h3 style="font-size:20px">⏰ 到时间啦</h3>
+    <p id="reminder-fire-text" style="font-size:16px;margin:10px 0"></p>
+    <div class="modal-actions" style="justify-content:center">
+      <button class="btn primary" id="btn-reminder-done">完成该事项</button>
+      <button class="btn" id="btn-reminder-ok">知道了</button>
     </div>
   </div>
 </div>
@@ -338,6 +387,7 @@ function defaultState(now) {
     history: [],
     settings: {
       theme: 'auto',
+      fontFamily: '', fontSize: 'm',
       labels: [
         { name: 'AI处理', color: '#7C5CFF' }, { name: '抛球', color: '#F59E0B' },
         { name: '脚本', color: '#5B8DEF' },   { name: '时效', color: '#EF4444' },
@@ -372,9 +422,10 @@ function rollover(state, now) {
     else next.history.unshift({ date: next.lastActiveDate, focusMs: archivedFocusMs, tasks: doneTasks });
     next.history.sort((a, b) => b.date.localeCompare(a.date));
   }
-  // 2) 未完成滚入今日 inbox：清当日字段，保留累计 focusMs/标签/子任务
+  // 2) 未完成滚入今日 inbox：清当日字段（含提醒），保留累计 focusMs/标签/子任务
   next.tasks = next.tasks.filter(t => t.zone !== 'done').map(t => Object.assign({}, t, {
-    zone: 'inbox', rolledOver: true, focusMsToday: 0, minLine: null, minLineMet: false, completedAt: null
+    zone: 'inbox', rolledOver: true, focusMsToday: 0, minLine: null, minLineMet: false,
+    completedAt: null, remindAt: null, reminded: false
   }));
   // 3) 注入每日固定事项（与今日已有事项按文本去重）
   next.settings.dailyFixed.forEach(f => {
@@ -460,8 +511,21 @@ function settleFocusSession(state, nowMs) {
   return { state: next, sessionMs: sessionMs, needRest: needRest };
 }
 
+function labelPriorityOf(task, labels) {
+  // 事项有效优先级：无标签=0；有标签取其中最优先（最大）者；标签缺 priority 字段按 0
+  const names = task.labels || [];
+  if (!names.length) return 0;
+  let best = null;
+  names.forEach(name => {
+    const l = (labels || []).find(x => x.name === name);
+    const v = (l && typeof l.priority === 'number') ? l.priority : 0;
+    if (best === null || v > best) best = v;
+  });
+  return best === null ? 0 : best;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession };
+  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, labelPriorityOf };
 }
 /* PURE CORE END */
 
@@ -589,6 +653,11 @@ function labelColor(name) {
   return l ? l.color : '#94A3B8';
 }
 
+function fmtTimeHM(ms) {   // 批次2：提醒时刻 HH:MM 展示
+  const d = new Date(ms);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
 function buildTaskCard(task) {
   const card = document.createElement('div');
   card.className = 'task-card' + (task.zone === 'doing' ? ' doing' : '') + (task.zone === 'done' ? ' done-item' : '');
@@ -605,12 +674,17 @@ function buildTaskCard(task) {
         (task.subtasks && task.subtasks.length ? '<span class="sub-count">' + doneSubs + '/' + task.subtasks.length + '</span>' : '') +
         (task.rolledOver ? '<span class="rollover-mark" title="昨日遗留">遗</span>' : '') +
         (task.minLine ? '<span class="min-dot' + (task.minLineMet ? ' met' : '') + '" title="最低完成线"></span>' : '') +
+        (task.focusMs > 0 ? '<span class="focus-badge" title="累计聚焦">⏱ ' + formatDuration(task.focusMs) + '</span>' : '') +
+        (task.remindAt ? '<span class="remind-badge" title="提醒时间">⏰ ' + fmtTimeHM(task.remindAt) + '</span>' : '') +
       '</span>' +
       (task.subtasks && task.subtasks.length
         ? '<button class="icon-btn expand-btn" data-action="expand" title="子任务">' +
           (expandedIds.has(task.id) ? '▾' : '▸') + '</button>' : '') +
       '<span class="card-actions">' +
+        (task.zone === 'inbox' ? '<button class="icon-btn" data-action="todoing" title="移入正在处理">▶</button>' : '') +
         '<button class="icon-btn" data-action="focus" title="聚焦">◉</button>' +
+        '<button class="icon-btn" data-action="edit" title="修改文字">✎</button>' +
+        '<button class="icon-btn" data-action="remind" title="设置提醒">⏰</button>' +
         '<button class="icon-btn" data-action="copy" title="复制">⧉</button>' +
         '<button class="icon-btn" data-action="minline" title="最低完成线">⑂</button>' +
         '<button class="icon-btn" data-action="delete" title="删除">✕</button>' +
@@ -626,6 +700,7 @@ function completeTask(id) {
   if (!t) return;
   t.zone = 'done';
   t.completedAt = Date.now();
+  t.remindAt = null; t.reminded = false;   // 批次2：完成即清提醒，避免已完成事项到点仍弹窗
   save();
 }
 
@@ -633,6 +708,34 @@ function deleteTask(id) {
   if (state.focusSession && state.focusSession.taskId === id) exitFocus();   // Task 9 修复轮：防止删除聚焦卡导致死锁
   state.tasks = state.tasks.filter(x => x.id !== id);
   save();
+}
+
+function startEditTaskText(id) {   // 批次2：就地修改事项文字（Enter/失焦保存，Esc 取消）
+  const t = state.tasks.find(x => x.id === id);
+  const card = document.querySelector('.task-card[data-id="' + id + '"]');
+  if (!t || !card) return;
+  const span = card.querySelector('.task-text');
+  if (!span) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'text-edit';
+  input.value = t.text;
+  span.replaceWith(input);
+  input.focus(); input.select();
+  let settled = false;
+  const commit = ok => {
+    if (settled) return;
+    settled = true;
+    const v = input.value.trim();
+    if (ok && v && v !== t.text) { t.text = v; save(); }
+    else refreshCard(id);
+  };
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') commit(true);
+    else if (e.key === 'Escape') commit(false);
+  });
+  input.addEventListener('blur', () => commit(true));
 }
 
 const expandedIds = new Set();
@@ -664,10 +767,12 @@ function fillSubtaskBox(card, task, readOnly) {
       '<button class="icon-btn sub-del" data-sid="' + s.id + '">✕</button>' +
     '</div>').join('') +
     '<div class="add-row" style="margin-top:6px"><input class="sub-input" type="text" placeholder="添加子任务，回车确认"></div>' +
-    '<div class="label-picker">' + state.settings.labels.map(l =>
+    (state.focusSession && state.focusSession.taskId === task.id   // 批次2：聚焦中的卡片不展示标签选择区，减少干扰
+      ? ''
+      : '<div class="label-picker">' + state.settings.labels.map(l =>
       '<button class="chip' + (task.labels.includes(l.name) ? ' on' : '') + '" data-label="' + escapeHtml(l.name) + '"' +
       (task.labels.includes(l.name) ? ' style="background:' + escapeHtml(l.color) + '"' : '') + '>' + escapeHtml(l.name) + '</button>').join('') +
-    '</div>';
+      '</div>');
   box.querySelector('.sub-input').addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
     const text = e.target.value.trim();
@@ -718,6 +823,9 @@ function dispatchCardAction(e) {
   const id = btn.closest('.task-card').dataset.id;
   if (btn.dataset.action === 'expand') { toggleExpand(id); return; }
   if (btn.dataset.action === 'focus') { startFocus(id); return; }
+  if (btn.dataset.action === 'todoing') { if (moveTask(id, 'doing', null)) showToast('已移入正在处理'); return; }   // 批次2：inbox 一键入 doing
+  if (btn.dataset.action === 'edit') { startEditTaskText(id); return; }   // 批次2：修改文字
+  if (btn.dataset.action === 'remind') { openRemindDialog(id); return; }   // 批次2：设置提醒
   if (btn.dataset.action === 'minline') { openMinLineDialog(id); return; }
   if (btn.dataset.action === 'copy') { copyOne(id); return; }   // Task 15
   if (btn.dataset.action === 'delete') { deleteTask(id); showToast('已删除'); }
@@ -751,7 +859,8 @@ document.getElementById('input-add').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   const text = e.target.value.trim();
   if (!text) return;
-  createTask(text);
+  const t = createTask(text);
+  if (document.getElementById('add-done-toggle').checked) { t.zone = 'done'; t.completedAt = Date.now(); }   // 批次2：直接完成开关
   e.target.value = '';
   save();
 });
@@ -811,8 +920,8 @@ function renderHistory() {
       card.querySelector('.task-check').disabled = true;   // 归档卡片勾选框禁用
       if (expandedIds.has(t.id)) fillSubtaskBox(card, t, true);   // 展开复用 dispatchCardAction，重绘后恢复（归档只读）
       actions.querySelector('[data-action="restore"]').addEventListener('click', () => restoreToToday(t, day.date));
-      actions.querySelector('[data-action="copy"]').addEventListener('click', () =>   // 归档卡不在 state.tasks，就地闭包复制（Task 15）
-        copyText(formatTasksAsText([t])).then(ok => showToast(ok ? '已复制（可直接粘贴回批量添加恢复）' : '复制失败')));
+      actions.querySelector('[data-action="copy"]').addEventListener('click', () =>   // 归档卡不在 state.tasks，就地闭包复制；批次2：纯任务名
+        copyText(t.text).then(ok => showToast(ok ? '已复制任务名' : '复制失败')));
       sec.appendChild(card);
     });
     box.appendChild(sec);
@@ -849,6 +958,11 @@ function showView(name) {
 
 function applyTheme() {
   document.documentElement.dataset.theme = state.settings.theme === 'auto' ? '' : state.settings.theme;
+}
+function applyFont() {   // 批次2：字体/字号（字体仅限本机已安装；字号=整体缩放）
+  const f = state.settings.fontFamily;
+  document.body.style.fontFamily = f ? '"' + f.replace(/"/g, '') + '", "Segoe UI", system-ui, sans-serif' : '';
+  document.body.style.zoom = { s: '0.9', m: '1', l: '1.1', xl: '1.25' }[state.settings.fontSize || 'm'] || '1';
 }
 document.getElementById('btn-theme').addEventListener('click', () => {
   const order = ['auto','light','dark'];
@@ -1092,7 +1206,9 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
 function copyZone(zone) {
   const list = zoneTasks(zone).filter(t => taskMatches(t, searchQuery, activeLabels));   // 遵循当前搜索/标签过滤
   if (!list.length) { showToast('该区域没有可复制的事项'); return; }
-  copyText(formatTasksAsText(list)).then(ok => showToast(ok ? '已复制 ' + list.length + ' 项' : '复制失败'));
+  // 批次2：已完成区复制为纯任务名（每行一个，无前缀/标签/子任务）；完整格式走导出。今日区保持 round-trip 格式
+  const text = zone === 'done' ? list.map(t => t.text).join('\n') : formatTasksAsText(list);
+  copyText(text).then(ok => showToast(ok ? '已复制 ' + list.length + ' 项' : '复制失败'));
 }
 ['doing','inbox'].forEach(z =>
   document.getElementById('copy-' + z).addEventListener('click', () => copyZone(z)));
@@ -1100,8 +1216,18 @@ document.getElementById('copy-done').addEventListener('click', () => copyZone('d
 
 function copyOne(id) {
   const t = state.tasks.find(x => x.id === id);
-  if (t) copyText(formatTasksAsText([t])).then(ok => showToast(ok ? '已复制（可直接粘贴回批量添加恢复）' : '复制失败'));
+  if (!t) return;
+  const text = t.zone === 'done' ? t.text : formatTasksAsText([t]);   // 批次2：完成态复制纯任务名
+  copyText(text).then(ok => showToast(ok ? (t.zone === 'done' ? '已复制任务名' : '已复制（可直接粘贴回批量添加恢复）') : '复制失败'));
 }
+
+document.getElementById('btn-sort-inbox').addEventListener('click', () => {   // 批次2：inbox 按标签优先级一键排序（稳定排序，同级保持原顺序）
+  const sorted = zoneTasks('inbox').slice()
+    .sort((a, b) => labelPriorityOf(b, state.settings.labels) - labelPriorityOf(a, state.settings.labels));
+  state.tasks = state.tasks.filter(t => t.zone !== 'inbox').concat(sorted);
+  save();
+  showToast('已按标签优先级排序');
+});
 
 function applyParsed(parsed) {
   parsed = parsed.filter(p => p.text && p.text.trim());   // 空文本项跳过：#标签-only 行不建鬼卡（Task 3 评审裁定）
@@ -1130,6 +1256,53 @@ document.getElementById('btn-bulk-add-confirm').addEventListener('click', () => 
   document.getElementById('modal-bulk').classList.remove('show');
   showToast('已添加 ' + r.added + ' 项到 inbox' + (r.doneCount > 0 ? '（部分直接完成）' : ''));
 });
+
+/* ============ 批次2：任务提醒（到点弹窗；错过补弹） ============ */
+let remindTaskId = null;
+function openRemindDialog(id) {
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) return;
+  remindTaskId = id;
+  document.getElementById('remind-task-name').textContent = t.text;
+  const d = t.remindAt ? new Date(t.remindAt) : new Date(Date.now() + 30 * 60000);
+  document.getElementById('remind-time').value = fmtTimeHM(d.getTime());
+  document.getElementById('modal-remind').classList.add('show');
+}
+document.getElementById('btn-remind-cancel').addEventListener('click', () =>
+  document.getElementById('modal-remind').classList.remove('show'));
+document.getElementById('btn-remind-save').addEventListener('click', () => {
+  const t = state.tasks.find(x => x.id === remindTaskId);
+  const v = document.getElementById('remind-time').value;
+  if (!t) { document.getElementById('modal-remind').classList.remove('show'); return; }
+  if (!v || !/^\d{2}:\d{2}$/.test(v)) { showToast('请选择提醒时间'); return; }
+  const d = new Date();
+  d.setHours(parseInt(v.slice(0, 2), 10), parseInt(v.slice(3, 5), 10), 0, 0);
+  t.remindAt = d.getTime();
+  t.reminded = false;
+  document.getElementById('modal-remind').classList.remove('show');
+  save();
+  showToast('已设置提醒 ' + v);
+});
+document.getElementById('btn-remind-clear').addEventListener('click', () => {
+  const t = state.tasks.find(x => x.id === remindTaskId);
+  if (t) { t.remindAt = null; t.reminded = false; save(); }
+  document.getElementById('modal-remind').classList.remove('show');
+});
+function checkReminders() {   // 到点弹窗：仅页面打开时有效；错过（含页面未开）在下次检查时补弹，一次一条
+  const t = state.tasks.find(x => x.remindAt && !x.reminded && x.remindAt <= Date.now());
+  if (!t) return;
+  t.reminded = true;
+  saveState();
+  document.getElementById('reminder-fire-text').textContent = t.text;
+  document.getElementById('btn-reminder-done').onclick = () => {   // 就地绑定当前事项
+    document.getElementById('modal-reminder-fire').classList.remove('show');
+    completeTask(t.id);
+  };
+  document.getElementById('modal-reminder-fire').classList.add('show');
+}
+document.getElementById('btn-reminder-ok').addEventListener('click', () =>
+  document.getElementById('modal-reminder-fire').classList.remove('show'));
+setInterval(checkReminders, 20000);
 
 /* ============ Task 16: 导出/导入与自动备份（File System Access API） ============ */
 function downloadJson(obj, filename) {
@@ -1272,6 +1445,7 @@ function renderSettings() {
     row.className = 'settings-row';
     row.innerHTML = '<input type="text" class="lbl-name" value="' + escapeHtml(l.name) + '">' +
       '<input type="color" class="lbl-color" value="' + escapeHtml(l.color) + '">' +
+      '<input type="number" class="lbl-prio" value="' + (typeof l.priority === 'number' ? l.priority : 0) + '" title="优先级（越大越靠前，可为负）" step="1">' +
       '<button class="icon-btn lbl-del">✕</button>';
     row.querySelector('.lbl-name').addEventListener('change', e => {
       const nn = e.target.value.trim();
@@ -1281,6 +1455,12 @@ function renderSettings() {
       l.name = nn; save();
     });
     row.querySelector('.lbl-color').addEventListener('change', e => { l.color = e.target.value; save(); });
+    row.querySelector('.lbl-prio').addEventListener('change', e => {   // 批次2：标签优先级（inbox 排序用）
+      const v = parseFloat(e.target.value);
+      l.priority = isNaN(v) ? 0 : v;
+      e.target.value = l.priority;
+      save();
+    });
     row.querySelector('.lbl-del').addEventListener('click', () => {
       state.tasks.forEach(t => t.labels = t.labels.filter(x => x !== l.name));
       state.settings.dailyFixed.forEach(f => f.labels = (f.labels || []).filter(x => x !== l.name));
@@ -1311,6 +1491,8 @@ function renderSettings() {
   document.getElementById('set-focus-min').value = state.settings.focusRemindMin;
   document.getElementById('set-rest-min').value = state.settings.restMin;
   document.getElementById('set-max-doing').value = state.settings.maxDoing;
+  document.getElementById('set-font').value = state.settings.fontFamily || '';   // 批次2：外观
+  document.getElementById('set-fontsize').value = state.settings.fontSize || 'm';
   document.getElementById('backup-status').textContent = state.settings.autoBackup.enabled
     ? (backupHandle ? '已绑定，最近备份：' + new Date(state.settings.autoBackup.lastBackupAt || 0).toLocaleString()
                     : '已绑定，刷新后需在设置页重新授权一次')
@@ -1341,6 +1523,14 @@ document.getElementById('btn-daily-add').addEventListener('click', () => {
     save();
   }));
 document.getElementById('btn-bind-backup').addEventListener('click', bindBackupFile);
+document.getElementById('set-font').addEventListener('change', e => {   // 批次2：字体/字号即时生效
+  state.settings.fontFamily = e.target.value.trim();
+  applyFont(); saveState();
+});
+document.getElementById('set-fontsize').addEventListener('change', e => {
+  state.settings.fontSize = e.target.value;
+  applyFont(); saveState();
+});
 
 /* ============ Task 18: 今日收尾与全局快捷键 ============ */
 document.getElementById('btn-summary').addEventListener('click', () => {
@@ -1378,8 +1568,10 @@ window.addEventListener('keydown', e => {
 document.querySelectorAll('.modal-backdrop').forEach(bd =>
   bd.addEventListener('click', e => { if (e.target === bd) bd.classList.remove('show'); }));
 
+applyFont();
 applyTheme();
 checkRollover();
+checkReminders();   // 批次2：错过的提醒开页即补弹
 showView('today');
 ensureFocusUi();
 </script>
