@@ -541,7 +541,9 @@ const expandedIds = new Set();
 function refreshCard(id) {
   const t = state.tasks.find(x => x.id === id);
   const old = document.querySelector('.task-card[data-id="' + id + '"]');
-  if (!old || !t) { renderToday(); return; }
+  // Task 13：完成区卡片与不在 state.tasks 的历史归档卡片走整视图重绘，
+  // 单卡 buildTaskCard 替换会还原默认按钮组并重新启用已禁用的勾选框
+  if (!old || !t || t.zone === 'done') { renderAll(); return; }
   const fresh = buildTaskCard(t);
   if (expandedIds.has(id)) fillSubtaskBox(fresh, t);
   old.replaceWith(fresh);
@@ -575,7 +577,12 @@ function fillSubtaskBox(card, task) {
     const sid = e.target.dataset && e.target.dataset.sid;
     if (!sid) return;
     const s = task.subtasks.find(x => x.id === sid);
-    if (s) { s.done = e.target.checked; state.tasks[state.tasks.indexOf(task)] = checkMinLine(task); save(); refreshCard(task.id); }
+    if (s) {
+      s.done = e.target.checked;
+      const ti = state.tasks.indexOf(task);   // 历史归档卡不在 state.tasks（Task 13），跳过回写
+      if (ti >= 0) state.tasks[ti] = checkMinLine(task);
+      save(); refreshCard(task.id);
+    }
   });
   box.addEventListener('click', e => {
     const del = e.target.closest('.sub-del');
@@ -629,7 +636,7 @@ function renderToday() {
   if (!doing.length) doingBox.innerHTML = '<div class="empty-hint">从 inbox 拖入或聚焦一条，最多 ' + state.settings.maxDoing + ' 条</div>';
   if (!inbox.length) inboxBox.innerHTML = '<div class="empty-hint">Inbox 为空，用下方输入框添加</div>';
 }
-['zone-doing','zone-inbox'].forEach(zid =>
+['zone-doing','zone-inbox','zone-donelist','history-list'].forEach(zid =>   // Task 13：完成/历史卡片复用 expand/.task-text/delete 委托
   document.getElementById(zid).addEventListener('click', dispatchCardAction));
 
 document.getElementById('input-add').addEventListener('keydown', e => {
@@ -640,8 +647,75 @@ document.getElementById('input-add').addEventListener('keydown', e => {
   e.target.value = '';
   save();
 });
-function renderDone() {}
-function renderHistory() {}
+/* ============ Task 13: 今日已完成页与历史归档页 ============ */
+function renderDone() {
+  const box = document.getElementById('zone-donelist');
+  box.innerHTML = '';
+  const done = zoneTasks('done').slice().sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  document.getElementById('count-done').textContent = String(done.length);
+  done.forEach(t => {
+    const card = buildTaskCard(t);
+    const actions = card.querySelector('.card-actions');
+    actions.innerHTML =
+      '<button class="icon-btn" data-action="revive" title="退回 inbox">↩</button>' +
+      '<button class="icon-btn" data-action="copy" title="复制">⧉</button>' +
+      '<button class="icon-btn" data-action="delete" title="删除">✕</button>';
+    card.querySelector('.task-check').disabled = true;   // 勾选框禁用：复活只走 ↩ 按钮，避免重写 completedAt
+    if (expandedIds.has(t.id)) fillSubtaskBox(card, t);   // renderAll 重建后恢复展开盒
+    box.appendChild(card);
+  });
+  if (!done.length) box.innerHTML = '<div class="empty-hint">今天还没有完成的事项</div>';
+}
+document.getElementById('zone-donelist').addEventListener('click', e => {
+  const btn = e.target.closest('[data-action="revive"]');
+  if (!btn) return;
+  const id = btn.closest('.task-card').dataset.id;
+  moveTask(id, 'inbox', null);
+  showToast('已退回 inbox');
+  // delete/expand/.task-text 由 dispatchCardAction 统一处理；copy 由 Task 15 统一接线
+});
+
+function renderHistory() {
+  const box = document.getElementById('history-list');
+  box.innerHTML = '';
+  if (!state.history.length) {
+    box.innerHTML = '<div class="empty-hint">暂无历史归档。跨天时昨日已完成会自动归档到这里。</div>';
+    return;
+  }
+  state.history.slice().sort((a, b) => b.date.localeCompare(a.date)).forEach(day => {
+    const d = new Date(day.date + 'T00:00:00');
+    const sec = document.createElement('section');
+    sec.className = 'zone';
+    sec.innerHTML = '<div class="zone-head"><h2>' + (d.getMonth() + 1) + '月' + d.getDate() + '日</h2>' +
+      '<span class="count">聚焦 ' + formatDuration(day.focusMs) + ' · ' + day.tasks.length + ' 项</span></div>';
+    day.tasks.forEach(t => {
+      const card = buildTaskCard(t);   // zone 为 done → done-item 样式
+      const actions = card.querySelector('.card-actions');
+      actions.innerHTML =
+        '<button class="icon-btn" data-action="copy" title="复制">⧉</button>' +
+        '<button class="icon-btn" data-action="restore" title="恢复到今日">↺</button>';
+      card.querySelector('.task-check').disabled = true;   // 归档卡片勾选框禁用
+      if (expandedIds.has(t.id)) fillSubtaskBox(card, t);   // 展开复用 dispatchCardAction，重绘后恢复
+      actions.querySelector('[data-action="restore"]').addEventListener('click', () => restoreToToday(t, day.date));
+      sec.appendChild(card);
+    });
+    box.appendChild(sec);
+  });
+}
+
+function restoreToToday(archivedTask, fromDate) {
+  const now = Date.now();
+  const clone = deepClone(archivedTask);
+  clone.id = genId(now);
+  clone.zone = 'inbox';
+  clone.subtasks = (clone.subtasks || []).map(s => ({ id: genId(now), text: s.text, done: false }));
+  clone.focusMs = 0; clone.focusMsToday = 0;
+  clone.minLine = null; clone.minLineMet = false;
+  clone.rolledOver = false; clone.createdAt = now; clone.completedAt = null;
+  state.tasks.push(clone);
+  save();
+  showToast('已恢复到今日 inbox' + (fromDate ? '（来自 ' + fromDate + '）' : ''));
+}
 
 function showView(name) {
   currentView = name;
