@@ -34,7 +34,7 @@ header.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; 
 .focus-total { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
 .progress-wrap { width: 100%; display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .progress-track { flex: 1; height: 8px; border-radius: 4px; background: var(--card-border); overflow: hidden; }
-#progress-bar { height: 100%; width: 0; background: var(--accent); border-radius: 4px; transition: width .25s; }
+#progress-bar { height: 100%; width: 0; background: var(--accent); border-radius: 4px; transition: width .25s, background .25s; }
 #progress-text { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 nav.tabs { display: flex; gap: 6px; margin: 14px 0 10px; }
 nav.tabs button {
@@ -649,7 +649,9 @@ function renderTopbar() {
     '<span class="date-week">周' + WEEK[d.getDay()] + '</span>';
   document.getElementById('focus-total').textContent = formatDuration(state.todayFocusMs);
   const p = computeProgress(state.tasks);
-  document.getElementById('progress-bar').style.width = p.pct + '%';
+  const bar = document.getElementById('progress-bar');   // 批次10：进度分档配色——<50% 品牌蓝 / ≥50% 琥珀 / 100% 绿
+  bar.style.width = p.pct + '%';
+  bar.style.background = p.pct >= 100 ? 'var(--ok)' : (p.pct >= 50 ? '#F59E0B' : 'var(--accent)');
   document.getElementById('progress-text').textContent = p.done + '/' + p.total + '（' + p.pct + '%）';
 }
 function renderChips() {
