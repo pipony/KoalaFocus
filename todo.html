@@ -221,6 +221,17 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     </div>
   </div>
 </div>
+<div class="modal-backdrop" id="modal-bulk">
+  <div class="modal">
+    <h3>批量添加</h3>
+    <p style="color:var(--text-2);font-size:13px">每行一个事项。行首 <code>- [ ] </code> 会忽略；粘贴复制格式（含 #标签 与缩进子任务）可完整恢复。</p>
+    <textarea id="bulk-text" rows="9" style="width:100%;padding:10px;border:1px solid var(--card-border);border-radius:10px;background:var(--card);color:var(--text);font-family:inherit;font-size:14px" placeholder="[ ] MySQL 压测  #脚本&#10;    [ ] 建表造数&#10;- [ ] 回复 XXX"></textarea>
+    <div class="modal-actions">
+      <button class="btn" id="btn-bulk-cancel">取消</button>
+      <button class="btn primary" id="btn-bulk-add-confirm">添加</button>
+    </div>
+  </div>
+</div>
 <div id="toast" class="toast"></div>
 <script>
 /* PURE CORE START */
@@ -639,8 +650,8 @@ function dispatchCardAction(e) {
   if (btn.dataset.action === 'expand') { toggleExpand(id); return; }
   if (btn.dataset.action === 'focus') { startFocus(id); return; }
   if (btn.dataset.action === 'minline') { openMinLineDialog(id); return; }
+  if (btn.dataset.action === 'copy') { copyOne(id); return; }   // Task 15
   if (btn.dataset.action === 'delete') { deleteTask(id); showToast('已删除'); }
-  // copy 的 handler 由 Task 15 在此追加 case
 }
 
 function renderToday() {
@@ -702,7 +713,7 @@ document.getElementById('zone-donelist').addEventListener('click', e => {
   const id = btn.closest('.task-card').dataset.id;
   moveTask(id, 'inbox', null);
   showToast('已退回 inbox');
-  // delete/expand/.task-text 由 dispatchCardAction 统一处理；copy 由 Task 15 统一接线
+  // delete/expand/.task-text/copy 由 dispatchCardAction 统一处理
 });
 
 function renderHistory() {
@@ -731,6 +742,8 @@ function renderHistory() {
       card.querySelector('.task-check').disabled = true;   // 归档卡片勾选框禁用
       if (expandedIds.has(t.id)) fillSubtaskBox(card, t, true);   // 展开复用 dispatchCardAction，重绘后恢复（归档只读）
       actions.querySelector('[data-action="restore"]').addEventListener('click', () => restoreToToday(t, day.date));
+      actions.querySelector('[data-action="copy"]').addEventListener('click', () =>   // 归档卡不在 state.tasks，就地闭包复制（Task 15）
+        copyText(formatTasksAsText([t])).then(ok => showToast(ok ? '已复制（可直接粘贴回批量添加恢复）' : '复制失败')));
       sec.appendChild(card);
     });
     box.appendChild(sec);
@@ -1002,6 +1015,48 @@ function checkRollover() {
 }
 setInterval(checkRollover, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkRollover(); });
+
+/* ============ Task 15: 区域复制、单事项复制与批量添加 ============ */
+function copyZone(zone) {
+  const list = zoneTasks(zone).filter(t => taskMatches(t, searchQuery, activeLabels));   // 遵循当前搜索/标签过滤
+  if (!list.length) { showToast('该区域没有可复制的事项'); return; }
+  copyText(formatTasksAsText(list)).then(ok => showToast(ok ? '已复制 ' + list.length + ' 项' : '复制失败'));
+}
+['doing','inbox'].forEach(z =>
+  document.getElementById('copy-' + z).addEventListener('click', () => copyZone(z)));
+document.getElementById('copy-done').addEventListener('click', () => copyZone('done'));
+
+function copyOne(id) {
+  const t = state.tasks.find(x => x.id === id);
+  if (t) copyText(formatTasksAsText([t])).then(ok => showToast(ok ? '已复制（可直接粘贴回批量添加恢复）' : '复制失败'));
+}
+
+function applyParsed(parsed) {
+  parsed = parsed.filter(p => p.text && p.text.trim());   // 空文本项跳过：#标签-only 行不建鬼卡（Task 3 评审裁定）
+  let n = 0;
+  parsed.forEach(p => {
+    createTask(p.text, p.labels, p.subtasks);
+    const t = state.tasks[state.tasks.length - 1];
+    if (p.done) { t.zone = 'done'; t.completedAt = Date.now(); }
+    n++;
+  });
+  save();
+  return n;
+}
+document.getElementById('btn-bulk-add').addEventListener('click', () => {
+  document.getElementById('modal-bulk').classList.add('show');
+  document.getElementById('bulk-text').focus();
+});
+document.getElementById('btn-bulk-cancel').addEventListener('click', () =>
+  document.getElementById('modal-bulk').classList.remove('show'));
+document.getElementById('btn-bulk-add-confirm').addEventListener('click', () => {
+  const parsed = parseBulkText(document.getElementById('bulk-text').value);
+  if (!parsed.length) { showToast('没有解析到事项'); return; }
+  const n = applyParsed(parsed);
+  document.getElementById('bulk-text').value = '';
+  document.getElementById('modal-bulk').classList.remove('show');
+  showToast('已添加 ' + n + ' 项到 inbox' + (parsed.some(p => p.done) ? '（部分直接完成）' : ''));
+});
 
 applyTheme();
 checkRollover();
