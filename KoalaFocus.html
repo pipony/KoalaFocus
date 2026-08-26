@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐨</text></svg>">
 <title>KoalaFocus · 今日待办</title>
 <style>
 :root {
@@ -78,7 +79,6 @@ section.zone { margin-bottom: 18px; }
 .card-badges { display: flex; align-items: center; gap: 6px; }
 .tag-badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; color: #fff; border: 1px solid rgba(255,255,255,.25); }   /* 深色模式下深底徽章（如「深度」#1E293B）白描边保可读，浅色下近无感 */
 .sub-count { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
-.rollover-mark { font-size: 11px; color: var(--danger); border: 1px solid currentColor; border-radius: 4px; padding: 0 3px; }
 .min-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
 .min-dot.met { background: var(--ok); }
 .icon-btn {
@@ -169,7 +169,14 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .task-link:hover { text-decoration: underline; }
 .task-card.done-item .task-link { color: var(--text-2); text-decoration: line-through; }
 .note-badge { font-size: 11px; }
-.note-box { margin-top: 8px; }
+.note-box { margin-bottom: 8px; }
+.note-show { display: flex; align-items: flex-start; gap: 6px; padding: 6px 8px; border: 1px dashed var(--card-border); border-radius: 8px; cursor: pointer; font-size: 13px; min-height: 30px; }
+.note-show:hover { border-color: var(--accent); }
+.note-label { color: var(--text-2); white-space: nowrap; }
+.note-text { flex: 1; white-space: pre-wrap; word-break: break-word; color: var(--text); }
+.note-empty { color: var(--text-2); }
+.note-edit-btn { opacity: 0; }
+.note-show:hover .note-edit-btn { opacity: 1; }
 .note-input { width: 100%; padding: 6px 10px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; font-size: 13px; resize: vertical; }
 .note-readonly { margin-top: 6px; font-size: 13px; color: var(--text-2); white-space: pre-wrap; }
 .cheer-word {
@@ -711,6 +718,12 @@ function fmtTimeHM(ms) {   // 批次2：提醒时刻 HH:MM 展示
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 
+function urlHrefOf(text) {   // 批次5：整体是网址 → 返回 href；否则空串
+  const s = String(text || '').trim();
+  if (!/^(https?:\/\/\S+|www\.\S+)$/i.test(s)) return '';
+  return /^https?:/i.test(s) ? s : 'https://' + s;
+}
+
 function buildTaskCard(task) {
   const card = document.createElement('div');
   card.className = 'task-card' + (task.zone === 'doing' ? ' doing' : '') + (task.zone === 'done' ? ' done-item' : '');
@@ -719,9 +732,7 @@ function buildTaskCard(task) {
   const doneSubs = (task.subtasks || []).filter(s => s.done).length;
   const labelsHtml = task.labels.map(l =>
     '<span class="tag-badge" style="background:' + escapeHtml(labelColor(l)) + '">' + escapeHtml(l) + '</span>').join('');
-  const urlHref = /^(https?:\/\/\S+|www\.\S+)$/i.test(String(task.text || '').trim())
-    ? (/^https?:/i.test(task.text.trim()) ? task.text.trim() : 'https://' + task.text.trim())
-    : '';   // 批次4：整体是网址时渲染为可点击链接（file:// 下新标签打开）
+  const urlHref = urlHrefOf(task.text);   // 批次4：整体是网址时渲染为可点击链接（file:// 下新标签打开）
   card.innerHTML =
     '<div class="task-row">' +
       '<input type="checkbox" class="task-check" ' + (task.zone === 'done' ? 'checked' : '') + '>' +
@@ -730,7 +741,6 @@ function buildTaskCard(task) {
         : '<span class="task-text">' + escapeHtml(task.text) + '</span>') +
       '<span class="card-badges">' + labelsHtml +
         (task.subtasks && task.subtasks.length ? '<span class="sub-count">' + doneSubs + '/' + task.subtasks.length + '</span>' : '') +
-        (task.rolledOver ? '<span class="rollover-mark" title="昨日遗留">遗</span>' : '') +
         (task.minLine ? '<span class="min-dot' + (task.minLineMet ? ' met' : '') + '" title="最低完成线"></span>' : '') +
         (task.focusMs > 0 ? '<span class="focus-badge" title="累计聚焦">⏱ ' + formatDuration(task.focusMs) + '</span>' : '') +
         (task.note ? '<span class="note-badge" title="有备注">📝</span>' : '') +
@@ -816,25 +826,34 @@ function fillSubtaskBox(card, task, readOnly) {
   const box = card.querySelector('.subtask-box');
   box.style.display = '';
   if (readOnly) {   // 历史归档卡：只读视图（Task 13 裁定：归档不可篡改，仅查看子任务）
-    box.innerHTML = (task.subtasks || []).map(s =>
-      '<div class="sub-row"><span class="' + (s.done ? 'sub-done' : '') + '">' + escapeHtml(s.text) + '</span></div>').join('') +
+    box.innerHTML = (task.subtasks || []).map(s => {
+      const href = urlHrefOf(s.text);   // 批次5：归档子任务网址也可直接打开
+      return '<div class="sub-row">' +
+        (href ? '<a class="task-link" target="_blank" rel="noopener" href="' + escapeHtml(href) + '"' + (s.done ? ' style="text-decoration:line-through;color:var(--text-2)"' : '') + '>' + escapeHtml(s.text) + '</a>'
+              : '<span class="' + (s.done ? 'sub-done' : '') + '">' + escapeHtml(s.text) + '</span>') +
+      '</div>';
+    }).join('') +
       (task.note ? '<div class="note-readonly">📝 ' + escapeHtml(task.note) + '</div>' : '');
     return;
   }
-  box.innerHTML = (task.subtasks || []).map(s =>
-    '<div class="sub-row">' +
-      '<input type="checkbox" class="sub-check" data-sid="' + s.id + '"' + (s.done ? ' checked' : '') + '>' +
-      '<span class="' + (s.done ? 'sub-done' : '') + '">' + escapeHtml(s.text) + '</span>' +
-      '<button class="icon-btn sub-del" data-sid="' + s.id + '">✕</button>' +
-    '</div>').join('') +
+  box.innerHTML =
+    '<div class="note-box">' + noteShowHtml(task) + '</div>' +   // 批次5：备注置顶、回显态、点击才编辑
+    (task.subtasks || []).map(s => {
+      const href = urlHrefOf(s.text);   // 批次5：子任务是网址时可直接打开
+      return '<div class="sub-row">' +
+        '<input type="checkbox" class="sub-check" data-sid="' + s.id + '"' + (s.done ? ' checked' : '') + '>' +
+        (href ? '<a class="task-link" target="_blank" rel="noopener" href="' + escapeHtml(href) + '"' + (s.done ? ' style="text-decoration:line-through;color:var(--text-2)"' : '') + '>' + escapeHtml(s.text) + '</a>'
+              : '<span class="' + (s.done ? 'sub-done' : '') + '">' + escapeHtml(s.text) + '</span>') +
+        '<button class="icon-btn sub-del" data-sid="' + s.id + '">✕</button>' +
+      '</div>';
+    }).join('') +
     '<div class="add-row" style="margin-top:6px"><input class="sub-input" type="text" placeholder="添加子任务，回车确认"></div>' +
     (state.focusSession && state.focusSession.taskId === task.id   // 批次2：聚焦中的卡片不展示标签选择区，减少干扰
       ? ''
       : '<div class="label-picker">' + state.settings.labels.map(l =>
       '<button class="chip' + (task.labels.includes(l.name) ? ' on' : '') + '" data-label="' + escapeHtml(l.name) + '"' +
       (task.labels.includes(l.name) ? ' style="background:' + escapeHtml(l.color) + '"' : '') + '>' + escapeHtml(l.name) + '</button>').join('') +
-      '</div>') +
-    '<div class="note-box"><textarea class="note-input" rows="2" placeholder="备注…（展开时可编辑）">' + escapeHtml(task.note || '') + '</textarea></div>';   // 批次4：备注仅展开时录入/展示
+      '</div>');
   box.querySelector('.sub-input').addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
     const text = e.target.value.trim();
@@ -866,8 +885,32 @@ function fillSubtaskBox(card, task, readOnly) {
       save(); refreshCard(task.id);
     }
   });
-  const noteInput = box.querySelector('.note-input');   // 批次4：备注保存
-  if (noteInput) noteInput.addEventListener('change', e => { task.note = e.target.value.trim(); save(); });
+  const noteBoxEl = box.querySelector('.note-box');   // 批次5：点击备注进入编辑
+  if (noteBoxEl) noteBoxEl.addEventListener('click', () => startNoteEdit(task));
+}
+
+function noteShowHtml(task) {   // 批次5：备注回显态（点击进入编辑）
+  return task.note
+    ? '<div class="note-show" title="点击编辑备注"><span class="note-label">备注</span><span class="note-text">' + escapeHtml(task.note) + '</span><button class="icon-btn note-edit-btn" title="编辑备注">✎</button></div>'
+    : '<div class="note-show note-empty" title="点击添加备注">＋ 备注</div>';
+}
+
+function startNoteEdit(task) {   // 批次5：备注编辑态——失焦保存、Esc 取消
+  const box = document.querySelector('.task-card[data-id="' + task.id + '"] .note-box');
+  if (!box || box.querySelector('textarea')) return;
+  box.innerHTML = '<textarea class="note-input" rows="2" placeholder="备注…（失焦保存，Esc 取消）">' + escapeHtml(task.note || '') + '</textarea>';
+  const ta = box.querySelector('textarea');
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  let done = false;
+  const commit = ok => {
+    if (done) return;
+    done = true;
+    if (ok) { task.note = ta.value.trim(); save(); }
+    else refreshCard(task.id);
+  };
+  ta.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') commit(false); });
+  ta.addEventListener('blur', () => commit(true));
 }
 
 function toggleExpand(id, forceOpen) {
@@ -1405,11 +1448,23 @@ document.getElementById('btn-reminder-ok').addEventListener('click', () =>
   document.getElementById('modal-reminder-fire').classList.remove('show'));
 setInterval(checkReminders, 20000);
 
-/* ============ 批次4：完成庆祝动画（彩带 + 随机鼓励语） ============ */
+/* ============ 批次4/5：完成庆祝动画（彩带/烟花/星星/emoji 多样式 + 随机鼓励语） ============ */
 const CHEER_WORDS = ['Well done! 🎉', 'Good job! 👏', 'Nice! ✨', 'Clever! 🧠', 'Awesome! 🚀', 'Perfect! 💯', 'Got it! ✅', 'Boom! 💥', 'Here we go! 🔥', 'High five! 🙌'];
 const CHEER_COLORS = ['#4F6DF5', '#F59E0B', '#10B981', '#EC4899', '#7C5CFF', '#EF4444', '#0EA5E9'];
+const CHEER_EMOJIS = ['✨', '⭐', '🎉', '💥', '🐨', '💫', '🌟'];
+const CHEER_MODES = ['confetti', 'fireworks', 'stars', 'emoji'];
 let cheerCanvas = null;
+function drawCheerStar(ctx, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const rr = i % 2 ? r * 0.45 : r;
+    const a = Math.PI / 5 * i - Math.PI / 2;
+    if (i) ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); else ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath(); ctx.fill();
+}
 function celebrate(size) {
+  const mode = CHEER_MODES[Math.random() * CHEER_MODES.length | 0];   // 批次5：每次随机样式
   const n = size === 'big' ? 90 : 30;
   if (!cheerCanvas) {
     cheerCanvas = document.createElement('canvas');
@@ -1422,12 +1477,40 @@ function celebrate(size) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const W = innerWidth, H = innerHeight;
   const parts = [];
-  for (let i = 0; i < n; i++) {
-    parts.push({ x: W / 2 + (Math.random() - 0.5) * 180, y: H * 0.35 + (Math.random() - 0.5) * 40,
-      vx: (Math.random() - 0.5) * 11, vy: -4 - Math.random() * 8,
-      w: 5 + Math.random() * 6, h: 8 + Math.random() * 8,
-      rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.3,
-      color: CHEER_COLORS[Math.random() * CHEER_COLORS.length | 0], life: 1 });
+  const color = () => CHEER_COLORS[Math.random() * CHEER_COLORS.length | 0];
+  if (mode === 'fireworks') {   // 多点放射烟花，拖尾线条
+    const centers = size === 'big' ? 3 : 1;
+    for (let c = 0; c < centers; c++) {
+      const cx = W * (0.25 + Math.random() * 0.5), cy = H * (0.2 + Math.random() * 0.25);
+      const cc = color();
+      for (let i = 0; i < Math.ceil(n / centers); i++) {
+        const a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 4.5;
+        parts.push({ type: 'spark', x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1.5,
+          g: 0.09, rot: 0, vr: 0, color: Math.random() < 0.6 ? cc : color(), life: 1 });
+      }
+    }
+  } else if (mode === 'stars') {
+    for (let i = 0; i < n; i++) {
+      parts.push({ type: 'star', x: W / 2 + (Math.random() - 0.5) * 200, y: H * 0.35 + (Math.random() - 0.5) * 40,
+        vx: (Math.random() - 0.5) * 9, vy: -4 - Math.random() * 7, g: 0.2,
+        r: 5 + Math.random() * 6, rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.25,
+        color: color(), life: 1 });
+    }
+  } else if (mode === 'emoji') {
+    for (let i = 0; i < (size === 'big' ? 36 : 14); i++) {
+      parts.push({ type: 'emoji', x: W / 2 + (Math.random() - 0.5) * 200, y: H * 0.35 + (Math.random() - 0.5) * 40,
+        vx: (Math.random() - 0.5) * 8, vy: -3.5 - Math.random() * 6, g: 0.18,
+        rot: (Math.random() - 0.5) * 0.6, vr: (Math.random() - 0.5) * 0.1,
+        ch: CHEER_EMOJIS[Math.random() * CHEER_EMOJIS.length | 0], fs: 16 + Math.random() * 12, life: 1 });
+    }
+  } else {   // confetti 彩带纸屑
+    for (let i = 0; i < n; i++) {
+      parts.push({ type: 'rect', x: W / 2 + (Math.random() - 0.5) * 180, y: H * 0.35 + (Math.random() - 0.5) * 40,
+        vx: (Math.random() - 0.5) * 11, vy: -4 - Math.random() * 8, g: 0.22,
+        w: 5 + Math.random() * 6, h: 8 + Math.random() * 8,
+        rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.3,
+        color: color(), life: 1 });
+    }
   }
   const word = document.createElement('div');
   word.className = 'cheer-word';
@@ -1439,14 +1522,24 @@ function celebrate(size) {
     ctx.clearRect(0, 0, W, H);
     let alive = 0;
     parts.forEach(p => {
-      p.vy += 0.22; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      p.vy += p.g; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
       if (t - t0 > 900) p.life -= 0.04;
-      if (p.life > 0 && p.y < H + 20) {
+      if (p.life > 0 && p.y < H + 30) {
         alive++;
         ctx.save();
         ctx.globalAlpha = Math.max(0, p.life);
         ctx.translate(p.x, p.y); ctx.rotate(p.rot);
-        ctx.fillStyle = p.color; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        if (p.type === 'emoji') {
+          ctx.font = p.fs + 'px serif';
+          ctx.fillText(p.ch, -p.fs / 2, p.fs / 2);
+        } else if (p.type === 'star') {
+          ctx.fillStyle = p.color; drawCheerStar(ctx, p.r);
+        } else if (p.type === 'spark') {
+          ctx.strokeStyle = p.color; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-p.vx * 2.2, -p.vy * 2.2); ctx.stroke();
+        } else {
+          ctx.fillStyle = p.color; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        }
         ctx.restore();
       }
     });
@@ -1479,9 +1572,13 @@ function renderTimeline() {
   document.getElementById('timeline-blocks').innerHTML =
     blocks.map(b => '<div style="left:' + b.leftPct + '%;width:' + b.widthPct + '%"></div>').join('');
   const liveMs = state.focusSession ? Date.now() - state.focusSession.startAt : 0;
-  document.getElementById('timeline-summary').textContent =
-    '共 ' + blocks.length + ' 段聚焦 · 总时长 ' + formatDuration(state.todayFocusMs + liveMs) +
-    (state.focusSession ? '（含进行中）' : '') + '。时间轴仅显示 9:00–22:00，界外聚焦段会被裁剪。';
+  document.getElementById('timeline-summary').textContent =   // 批次5：区分"无记录"与"有记录但全在界外"
+    '聚焦 ' + segs.length + ' 段' +
+    (segs.length && blocks.length < segs.length ? '（其中 ' + blocks.length + ' 段落在 9:00–22:00 内）' : '') +
+    ' · 总时长 ' + formatDuration(state.todayFocusMs + liveMs) + (state.focusSession ? '（含进行中）' : '') + '。' +
+    (segs.length
+      ? '时间轴仅显示 9:00–22:00，界外聚焦段会被裁剪。'
+      : '今天还没有聚焦记录——开始一次聚焦并退出后，这里会显示对应时段。');
 }
 
 /* ============ 批次4：本机字体文件加载（FontFace，离线可用） ============ */
