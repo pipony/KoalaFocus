@@ -824,6 +824,11 @@ function refreshCard(id) {
 function fillSubtaskBox(card, task, readOnly) {
   const box = card.querySelector('.subtask-box');
   box.style.display = '';
+  box.addEventListener('mousedown', () => {   // 批次7：卡片 draggable 会吞掉文字选区——展开区内按下时临时关闭，松开恢复
+    card.draggable = false;
+    const restore = () => { card.draggable = true; window.removeEventListener('mouseup', restore); };
+    window.addEventListener('mouseup', restore);
+  });
   if (readOnly) {   // 历史归档卡：只读视图（Task 13 裁定：归档不可篡改，仅查看子任务）
     box.innerHTML = (task.subtasks || []).map(s => {
       const href = urlHrefOf(s.text);   // 批次5：归档子任务网址也可直接打开
@@ -993,6 +998,7 @@ function renderDone() {
   document.getElementById('count-done').textContent = String(done.length);
   done.forEach(t => {
     const card = buildTaskCard(t);
+    card.draggable = false;   // 批次7：完成页未接拖拽，关掉以允许选中复制文字
     const actions = card.querySelector('.card-actions');
     actions.innerHTML =
       '<button class="icon-btn" data-action="revive" title="退回 inbox">↩</button>' +
@@ -1033,6 +1039,7 @@ function renderHistory() {
       '<span class="count">聚焦 ' + formatDuration(day.focusMs) + ' · ' + tasks.length + ' 项</span></div>';
     tasks.forEach(t => {
       const card = buildTaskCard(t);   // zone 为 done → done-item 样式
+      card.draggable = false;   // 批次7：历史页未接拖拽，关掉以允许选中复制文字
       const actions = card.querySelector('.card-actions');
       actions.innerHTML =
         '<button class="icon-btn" data-action="copy" title="复制">⧉</button>' +
