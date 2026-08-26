@@ -170,11 +170,10 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .task-card.done-item .task-link { color: var(--text-2); text-decoration: line-through; }
 .note-badge { font-size: 11px; }
 .note-box { margin-bottom: 8px; }
-.note-show { display: flex; align-items: flex-start; gap: 6px; padding: 6px 8px; border: 1px dashed var(--card-border); border-radius: 8px; cursor: pointer; font-size: 13px; min-height: 30px; }
+.note-show { display: flex; align-items: flex-start; gap: 6px; padding: 6px 8px; border: 1px dashed var(--card-border); border-radius: 8px; font-size: 13px; min-height: 30px; }
 .note-show:hover { border-color: var(--accent); }
-.note-label { color: var(--text-2); white-space: nowrap; }
-.note-text { flex: 1; white-space: pre-wrap; word-break: break-word; color: var(--text); }
-.note-empty { color: var(--text-2); }
+.note-text { flex: 1; white-space: pre-wrap; word-break: break-word; color: var(--text-2); }   // 批次6：备注深灰、无标签
+.note-empty { color: var(--text-2); opacity: .75; }
 .note-edit-btn { opacity: 0; }
 .note-show:hover .note-edit-btn { opacity: 1; }
 .note-input { width: 100%; padding: 6px 10px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; font-size: 13px; resize: vertical; }
@@ -885,14 +884,17 @@ function fillSubtaskBox(card, task, readOnly) {
       save(); refreshCard(task.id);
     }
   });
-  const noteBoxEl = box.querySelector('.note-box');   // 批次5：点击备注进入编辑
-  if (noteBoxEl) noteBoxEl.addEventListener('click', () => startNoteEdit(task));
+  const noteBoxEl = box.querySelector('.note-box');   // 批次6：只有点 ✎ 图标才进入编辑
+  if (noteBoxEl) noteBoxEl.addEventListener('click', e => {
+    if (e.target.closest('.note-edit-btn')) startNoteEdit(task);
+  });
 }
 
-function noteShowHtml(task) {   // 批次5：备注回显态（点击进入编辑）
-  return task.note
-    ? '<div class="note-show" title="点击编辑备注"><span class="note-label">备注</span><span class="note-text">' + escapeHtml(task.note) + '</span><button class="icon-btn note-edit-btn" title="编辑备注">✎</button></div>'
-    : '<div class="note-show note-empty" title="点击添加备注">＋ 备注</div>';
+function noteShowHtml(task) {   // 批次6：备注回显态——深灰文字、无标签，仅 ✎ 图标进入编辑
+  return '<div class="note-show">' +
+    (task.note ? '<span class="note-text">' + escapeHtml(task.note) + '</span>'
+               : '<span class="note-text note-empty">＋ 添加备注</span>') +
+    '<button class="icon-btn note-edit-btn" title="编辑备注">✎</button></div>';
 }
 
 function startNoteEdit(task) {   // 批次5：备注编辑态——失焦保存、Esc 取消
@@ -1584,9 +1586,7 @@ function renderTimeline() {
 /* ============ 批次4：本机字体文件加载（FontFace，离线可用） ============ */
 const CUSTOM_FONT_NAME = 'KoalaCustomFont';
 let customFontOk = false;
-async function loadFontFileFromHandle(h) {
-  const file = await h.getFile();
-  const buf = await file.arrayBuffer();
+async function applyFontFromBuffer(buf) {
   const face = new FontFace(CUSTOM_FONT_NAME, buf);
   await face.load();
   document.fonts.add(face);
@@ -1598,18 +1598,19 @@ document.getElementById('btn-load-fontfile').addEventListener('click', async () 
   if (!('showOpenFilePicker' in window)) { showToast('此浏览器不支持选择字体文件，请用字体名输入框'); return; }
   try {
     const [h] = await window.showOpenFilePicker({ types: [{ description: '字体文件', accept: { 'font/*': ['.ttf', '.otf', '.woff', '.woff2'] } }] });
-    await idbPut('fontfile', h);
-    await loadFontFileFromHandle(h);
+    const buf = await (await h.getFile()).arrayBuffer();
+    await idbPut('fontBytes', buf);   // 批次6：直接存字体字节——刷新后免重新授权即可恢复（句柄方式在 file:// 下权限会回落）
+    await applyFontFromBuffer(buf);
     showToast('字体文件已加载并应用');
   } catch (e) {
     if (e && e.name === 'AbortError') return;   // 用户取消
     showToast('字体文件加载失败');
   }
 });
-(async () => {   // 启动时恢复字体文件（仅当权限仍为 granted）
+(async () => {   // 批次6：启动直接从 IndexedDB 恢复字体字节（无需任何授权）
   try {
-    const h = await idbGet('fontfile');
-    if (h && (await h.queryPermission({ mode: 'read' })) === 'granted') await loadFontFileFromHandle(h);
+    const buf = await idbGet('fontBytes');
+    if (buf) await applyFontFromBuffer(buf);
   } catch (e) {}
 })();
 
