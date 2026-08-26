@@ -824,10 +824,14 @@ function refreshCard(id) {
 function fillSubtaskBox(card, task, readOnly) {
   const box = card.querySelector('.subtask-box');
   box.style.display = '';
-  box.addEventListener('mousedown', () => {   // 批次7：卡片 draggable 会吞掉文字选区——展开区内按下时临时关闭，松开恢复
+  box.addEventListener('mousedown', () => {   // 批次7：卡片 draggable 会吞掉文字选区——展开区内按下时临时关闭
     card.draggable = false;
-    const restore = () => { card.draggable = true; window.removeEventListener('mouseup', restore); };
-    window.addEventListener('mouseup', restore);
+    const rearm = e2 => {   // 批次8：不在 mouseup 恢复（改祖先 draggable 会中断选区），改在别处按下时再恢复
+      if (box.contains(e2.target)) return;
+      card.draggable = true;
+      document.removeEventListener('mousedown', rearm);
+    };
+    document.addEventListener('mousedown', rearm);
   });
   if (readOnly) {   // 历史归档卡：只读视图（Task 13 裁定：归档不可篡改，仅查看子任务）
     box.innerHTML = (task.subtasks || []).map(s => {
