@@ -550,9 +550,14 @@ function refreshCard(id) {
   applyFocusUi(); applyBlurTargets();   // Task 9 修复轮：单卡片重绘后恢复聚焦态（无会话时为 no-op）
 }
 
-function fillSubtaskBox(card, task) {
+function fillSubtaskBox(card, task, readOnly) {
   const box = card.querySelector('.subtask-box');
   box.style.display = '';
+  if (readOnly) {   // 历史归档卡：只读视图（Task 13 裁定：归档不可篡改，仅查看子任务）
+    box.innerHTML = (task.subtasks || []).map(s =>
+      '<div class="sub-row"><span class="' + (s.done ? 'sub-done' : '') + '">' + escapeHtml(s.text) + '</span></div>').join('');
+    return;
+  }
   box.innerHTML = (task.subtasks || []).map(s =>
     '<div class="sub-row">' +
       '<input type="checkbox" class="sub-check" data-sid="' + s.id + '"' + (s.done ? ' checked' : '') + '>' +
@@ -695,7 +700,7 @@ function renderHistory() {
         '<button class="icon-btn" data-action="copy" title="复制">⧉</button>' +
         '<button class="icon-btn" data-action="restore" title="恢复到今日">↺</button>';
       card.querySelector('.task-check').disabled = true;   // 归档卡片勾选框禁用
-      if (expandedIds.has(t.id)) fillSubtaskBox(card, t);   // 展开复用 dispatchCardAction，重绘后恢复
+      if (expandedIds.has(t.id)) fillSubtaskBox(card, t, true);   // 展开复用 dispatchCardAction，重绘后恢复（归档只读）
       actions.querySelector('[data-action="restore"]').addEventListener('click', () => restoreToToday(t, day.date));
       sec.appendChild(card);
     });
