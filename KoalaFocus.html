@@ -154,9 +154,9 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 ::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 4px; }
 /* 批次2 增补 */
 #brand { font-size: 17px; font-weight: 700; color: var(--accent); white-space: nowrap; }
-#date-label { font-weight: 500; }
-.add-done-toggle { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text-2); white-space: nowrap; cursor: pointer; }
-.add-done-toggle input { accent-color: var(--accent); }
+#date-label { font-weight: 500; margin-left: 26px; }
+.date-num { color: var(--accent); font-weight: 600; }
+.date-week { color: var(--text-2); font-size: 14px; margin-left: 4px; }
 .text-edit { flex: 1; min-width: 0; font: inherit; padding: 2px 6px; border: 1px solid var(--accent); border-radius: 6px; background: var(--card); color: var(--text); }
 .focus-badge { font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .remind-badge { font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; }
@@ -195,11 +195,11 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
       <div id="zone-doing"></div>
     </section>
     <section class="zone" id="zone-inbox-wrap">
-      <div class="zone-head"><h2>Inbox</h2><span class="count" id="count-inbox"></span><button class="btn" id="btn-sort-inbox" title="按标签优先级排序（优先级在设置页配置）">⇅ 排序</button><button class="btn zone-copy" id="copy-inbox">复制</button></div>
+      <div class="zone-head"><h2>Inbox</h2><span class="count" id="count-inbox"></span><button class="btn" id="btn-sort-inbox" title="按标签优先级排序（优先级在设置页配置）">⇅ 标签排序</button><button class="btn zone-copy" id="copy-inbox">复制</button></div>
       <div id="zone-inbox"></div>
       <div class="add-row" style="margin-top:8px">
-        <input id="input-add" type="text" placeholder="添加今日事项，回车确认">
-        <label class="add-done-toggle" title="勾选后回车添加的事项直接进入今日已完成"><input type="checkbox" id="add-done-toggle">直接完成</label>
+        <input id="input-add" type="text" placeholder="添加今日事项，回车进 Inbox">
+        <button class="btn" id="btn-add-done" title="将输入框内容直接归档到今日已完成">直接完成</button>
         <button class="btn" id="btn-bulk-add">批量添加</button>
       </div>
     </section>
@@ -302,7 +302,8 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
       <label>字体 <input type="text" id="set-font" list="font-list" placeholder="留空=默认" style="width:150px"></label>
       <datalist id="font-list">
         <option value="微软雅黑"></option><option value="等线"></option><option value="黑体"></option>
-        <option value="宋体"></option><option value="楷体"></option><option value="Segoe UI"></option>
+        <option value="宋体"></option><option value="楷体"></option><option value="苹方"></option>
+        <option value="Segoe UI"></option>
       </datalist>
       <label>字号 <select id="set-fontsize">
         <option value="s">小</option><option value="m" selected>标准</option>
@@ -330,7 +331,7 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
   <div class="modal">
     <h3>设置提醒</h3>
     <p id="remind-task-name" style="color:var(--text-2);font-size:13px"></p>
-    <div class="minline-form"><label>今天 <input type="time" id="remind-time"></label></div>
+    <div class="minline-form"><label>今天 <input type="time" id="remind-time" step="300"></label></div>
     <p style="color:var(--text-2);font-size:12px">仅页面打开时提醒；错过的时间在下次打开时补弹。</p>
     <div class="modal-actions">
       <button class="btn" id="btn-remind-clear">清除提醒</button>
@@ -344,7 +345,7 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     <h3 style="font-size:20px">⏰ 到时间啦</h3>
     <p id="reminder-fire-text" style="font-size:16px;margin:10px 0"></p>
     <div class="modal-actions" style="justify-content:center">
-      <button class="btn primary" id="btn-reminder-done">完成该事项</button>
+      <button class="btn primary" id="btn-reminder-start">开始处理</button>
       <button class="btn" id="btn-reminder-ok">知道了</button>
     </div>
   </div>
@@ -585,8 +586,9 @@ function legacyCopy(text) {
 const WEEK = ['日','一','二','三','四','五','六'];
 function renderTopbar() {
   const d = new Date();
-  document.getElementById('date-label').textContent =
-    (d.getMonth() + 1) + '月' + d.getDate() + '日 周' + WEEK[d.getDay()];
+  document.getElementById('date-label').innerHTML =   // 批次3：月日数字用品牌蓝
+    '<span class="date-num">' + (d.getMonth() + 1) + '月' + d.getDate() + '日</span>' +
+    '<span class="date-week">周' + WEEK[d.getDay()] + '</span>';
   document.getElementById('focus-total').textContent = formatDuration(state.todayFocusMs);
   const p = computeProgress(state.tasks);
   document.getElementById('progress-bar').style.width = p.pct + '%';
@@ -859,10 +861,20 @@ document.getElementById('input-add').addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   const text = e.target.value.trim();
   if (!text) return;
-  const t = createTask(text);
-  if (document.getElementById('add-done-toggle').checked) { t.zone = 'done'; t.completedAt = Date.now(); }   // 批次2：直接完成开关
+  createTask(text);   // 回车 = 添加到 inbox
   e.target.value = '';
   save();
+});
+document.getElementById('btn-add-done').addEventListener('click', () => {   // 批次3：直接完成=按钮，一点即归档今日已完成
+  const el = document.getElementById('input-add');
+  const text = el.value.trim();
+  if (!text) { showToast('请先输入事项内容'); el.focus(); return; }
+  const t = createTask(text);
+  t.zone = 'done';
+  t.completedAt = Date.now();
+  el.value = '';
+  save();
+  el.focus();
 });
 /* ============ Task 13: 今日已完成页与历史归档页 ============ */
 function renderDone() {
@@ -959,9 +971,18 @@ function showView(name) {
 function applyTheme() {
   document.documentElement.dataset.theme = state.settings.theme === 'auto' ? '' : state.settings.theme;
 }
+const FONT_ALIASES = {   // 批次3：中文名附带英文别名，本机缺中文名注册时仍可命中
+  '微软雅黑': 'Microsoft YaHei', '等线': 'DengXian', '黑体': 'SimHei', '宋体': 'SimSun',
+  '楷体': 'KaiTi', '苹方': 'PingFang SC', '华文黑体': 'STHeiti', '华文楷体': 'STKaiti'
+};
 function applyFont() {   // 批次2：字体/字号（字体仅限本机已安装；字号=整体缩放）
   const f = state.settings.fontFamily;
-  document.body.style.fontFamily = f ? '"' + f.replace(/"/g, '') + '", "Segoe UI", system-ui, sans-serif' : '';
+  if (f) {
+    const clean = f.replace(/"/g, '');
+    const alias = FONT_ALIASES[clean];
+    document.body.style.fontFamily = '"' + clean + '"' + (alias ? ', "' + alias + '"' : '') +
+      ', "Segoe UI", system-ui, sans-serif';
+  } else document.body.style.fontFamily = '';
   document.body.style.zoom = { s: '0.9', m: '1', l: '1.1', xl: '1.25' }[state.settings.fontSize || 'm'] || '1';
 }
 document.getElementById('btn-theme').addEventListener('click', () => {
@@ -1084,6 +1105,7 @@ function applyFocusUi() {
       }
     }
   }
+  focusTick();   // 批次3：重挂聚焦 UI 后立即写入当前时长与顶栏累计，消除重绘瞬间计时数字闪空
 }
 
 function focusTick() {
@@ -1294,9 +1316,10 @@ function checkReminders() {   // 到点弹窗：仅页面打开时有效；错�
   t.reminded = true;
   saveState();
   document.getElementById('reminder-fire-text').textContent = t.text;
-  document.getElementById('btn-reminder-done').onclick = () => {   // 就地绑定当前事项
+  document.getElementById('btn-reminder-start').onclick = () => {   // 批次3：开始处理——移入正在处理（doing 满员由 moveTask 提示）
     document.getElementById('modal-reminder-fire').classList.remove('show');
-    completeTask(t.id);
+    if (t.zone === 'doing') { showToast('该事项已在正在处理区域'); return; }
+    if (moveTask(t.id, 'doing', null)) showToast('已移入正在处理');
   };
   document.getElementById('modal-reminder-fire').classList.add('show');
 }
@@ -1523,7 +1546,7 @@ document.getElementById('btn-daily-add').addEventListener('click', () => {
     save();
   }));
 document.getElementById('btn-bind-backup').addEventListener('click', bindBackupFile);
-document.getElementById('set-font').addEventListener('change', e => {   // 批次2：字体/字号即时生效
+document.getElementById('set-font').addEventListener('input', e => {   // 批次3：input 事件即时生效（不必失焦）；未安装的字体浏览器会回退默认
   state.settings.fontFamily = e.target.value.trim();
   applyFont(); saveState();
 });
