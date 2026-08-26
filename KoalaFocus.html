@@ -234,6 +234,7 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     <div id="zone-donelist"></div>
   </section>
   <section id="view-history" style="display:none">
+    <div class="zone-head"><h2>历史归档</h2><button class="btn danger zone-copy" id="btn-clear-history">清空</button></div>
     <div id="history-list"></div>
   </section>
 </div>
@@ -1027,6 +1028,7 @@ document.getElementById('zone-donelist').addEventListener('click', e => {
 function renderHistory() {
   const box = document.getElementById('history-list');
   box.innerHTML = '';
+  document.getElementById('btn-clear-history').style.display = state.history.length ? '' : 'none';   // 空归档不显示清空按钮
   if (!state.history.length) {
     box.innerHTML = '<div class="empty-hint">暂无历史归档。跨天时昨日已完成会自动归档到这里。</div>';
     return;
@@ -1060,6 +1062,14 @@ function renderHistory() {
   if (!shownDays && (searchQuery || activeLabels.size))   // 有历史但无任何匹配（Task 14）
     box.innerHTML = '<div class="empty-hint">无匹配事项</div>';
 }
+
+document.getElementById('btn-clear-history').addEventListener('click', () => {   // 批次9：一键清空历史归档
+  if (!state.history.length) return;
+  if (!window.confirm('将清空全部历史归档（含各日聚焦时长记录），确定？')) return;
+  state.history = [];
+  save();
+  showToast('已清空历史归档');
+});
 
 function restoreToToday(archivedTask, fromDate) {
   const now = Date.now();
