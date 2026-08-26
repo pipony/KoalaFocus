@@ -458,14 +458,33 @@ function renderChips() {
     b.className = 'chip' + (activeLabels.has(l.name) ? ' on' : '');
     b.textContent = l.name;
     if (activeLabels.has(l.name)) b.style.background = l.color;
-    b.onclick = () => {   // 过滤逻辑 Task 14 接线；此前仅切换选中态
+    b.onclick = () => {   // Task 14：切换选中后重绘全部视图，过滤真实生效
       activeLabels.has(l.name) ? activeLabels.delete(l.name) : activeLabels.add(l.name);
-      renderChips();
+      renderAll();
     };
     box.appendChild(b);
   });
 }
 const activeLabels = new Set();
+
+/* ============ Task 14: 搜索与标签过滤（今日/历史分开） ============ */
+let searchQuery = '';
+function taskMatches(task, query, labels) {
+  if (labels && labels.size) {
+    for (const l of labels) if (!task.labels.includes(l)) return false;
+  }
+  if (query) {
+    const q = query.toLowerCase();
+    const inText = task.text.toLowerCase().includes(q) ||
+      (task.subtasks || []).some(s => s.text.toLowerCase().includes(q));
+    if (!inText) return false;
+  }
+  return true;
+}
+document.getElementById('search-input').addEventListener('input', e => {
+  searchQuery = e.target.value.trim();
+  renderAll();
+});
 
 function renderAll() {
   renderTopbar(); renderChips();
@@ -628,18 +647,22 @@ function renderToday() {
   const doingBox = document.getElementById('zone-doing');
   const inboxBox = document.getElementById('zone-inbox');
   doingBox.innerHTML = ''; inboxBox.innerHTML = '';
-  const doing = zoneTasks('doing'), inbox = zoneTasks('inbox');
+  const doing = zoneTasks('doing').filter(t => taskMatches(t, searchQuery, activeLabels));   // Task 14
+  const inbox = zoneTasks('inbox').filter(t => taskMatches(t, searchQuery, activeLabels));
+  const filtering = !!(searchQuery || activeLabels.size);   // 存在过滤条件（Task 14）
   document.getElementById('count-doing').textContent = doing.length + '/' + state.settings.maxDoing;
   document.getElementById('count-inbox').textContent = String(inbox.length);
   doing.forEach(t => doingBox.appendChild(buildTaskCard(t)));
   inbox.forEach(t => inboxBox.appendChild(buildTaskCard(t)));
-  expandedIds.forEach(id => {   // renderAll 重建后恢复展开盒（Task 7 修复轮裁定）
+  expandedIds.forEach(id => {   // renderAll 重建后恢复展开盒（Task 7 修复轮裁定；过滤掉的卡无节点，自然跳过）
     const card = document.querySelector('.task-card[data-id="' + id + '"]');
     const t = state.tasks.find(x => x.id === id);
     if (card && t) fillSubtaskBox(card, t);
   });
-  if (!doing.length) doingBox.innerHTML = '<div class="empty-hint">从 inbox 拖入或聚焦一条，最多 ' + state.settings.maxDoing + ' 条</div>';
-  if (!inbox.length) inboxBox.innerHTML = '<div class="empty-hint">Inbox 为空，用下方输入框添加</div>';
+  if (!doing.length) doingBox.innerHTML = '<div class="empty-hint">' +
+    (filtering ? '无匹配事项' : '从 inbox 拖入或聚焦一条，最多 ' + state.settings.maxDoing + ' 条') + '</div>';
+  if (!inbox.length) inboxBox.innerHTML = '<div class="empty-hint">' +
+    (filtering ? '无匹配事项' : 'Inbox 为空，用下方输入框添加') + '</div>';
 }
 ['zone-doing','zone-inbox','zone-donelist','history-list'].forEach(zid =>   // Task 13：完成/历史卡片复用 expand/.task-text/delete 委托
   document.getElementById(zid).addEventListener('click', dispatchCardAction));
@@ -656,7 +679,8 @@ document.getElementById('input-add').addEventListener('keydown', e => {
 function renderDone() {
   const box = document.getElementById('zone-donelist');
   box.innerHTML = '';
-  const done = zoneTasks('done').slice().sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  const done = zoneTasks('done').filter(t => taskMatches(t, searchQuery, activeLabels))   // Task 14（filter 已返回新数组）
+    .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
   document.getElementById('count-done').textContent = String(done.length);
   done.forEach(t => {
     const card = buildTaskCard(t);
@@ -669,7 +693,8 @@ function renderDone() {
     if (expandedIds.has(t.id)) fillSubtaskBox(card, t);   // renderAll 重建后恢复展开盒
     box.appendChild(card);
   });
-  if (!done.length) box.innerHTML = '<div class="empty-hint">今天还没有完成的事项</div>';
+  if (!done.length) box.innerHTML = '<div class="empty-hint">' +
+    ((searchQuery || activeLabels.size) ? '无匹配事项' : '今天还没有完成的事项') + '</div>';
 }
 document.getElementById('zone-donelist').addEventListener('click', e => {
   const btn = e.target.closest('[data-action="revive"]');
@@ -687,13 +712,17 @@ function renderHistory() {
     box.innerHTML = '<div class="empty-hint">暂无历史归档。跨天时昨日已完成会自动归档到这里。</div>';
     return;
   }
+  let shownDays = 0;
   state.history.slice().sort((a, b) => b.date.localeCompare(a.date)).forEach(day => {
+    const tasks = day.tasks.filter(t => taskMatches(t, searchQuery, activeLabels));   // Task 14
+    if (!tasks.length) return;   // 过滤后为空的日期分组整体隐藏
+    shownDays++;
     const d = new Date(day.date + 'T00:00:00');
     const sec = document.createElement('section');
     sec.className = 'zone';
     sec.innerHTML = '<div class="zone-head"><h2>' + (d.getMonth() + 1) + '月' + d.getDate() + '日</h2>' +
-      '<span class="count">聚焦 ' + formatDuration(day.focusMs) + ' · ' + day.tasks.length + ' 项</span></div>';
-    day.tasks.forEach(t => {
+      '<span class="count">聚焦 ' + formatDuration(day.focusMs) + ' · ' + tasks.length + ' 项</span></div>';
+    tasks.forEach(t => {
       const card = buildTaskCard(t);   // zone 为 done → done-item 样式
       const actions = card.querySelector('.card-actions');
       actions.innerHTML =
@@ -706,6 +735,8 @@ function renderHistory() {
     });
     box.appendChild(sec);
   });
+  if (!shownDays && (searchQuery || activeLabels.size))   // 有历史但无任何匹配（Task 14）
+    box.innerHTML = '<div class="empty-hint">无匹配事项</div>';
 }
 
 function restoreToToday(archivedTask, fromDate) {
