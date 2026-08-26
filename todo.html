@@ -285,6 +285,16 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     <div class="modal-actions"><button class="btn primary" id="btn-settings-close">完成</button></div>
   </div>
 </div>
+<div class="modal-backdrop" id="modal-summary">
+  <div class="modal" style="max-width:560px">
+    <h3>今日收尾</h3>
+    <pre id="summary-pre" style="white-space:pre-wrap;font-family:inherit;font-size:14px;line-height:1.7;background:var(--bg);padding:14px;border-radius:10px"></pre>
+    <div class="modal-actions">
+      <button class="btn" id="btn-summary-close">关闭</button>
+      <button class="btn primary" id="btn-summary-copy">一键复制</button>
+    </div>
+  </div>
+</div>
 <div id="toast" class="toast"></div>
 <script>
 /* PURE CORE START */
@@ -1315,6 +1325,39 @@ document.getElementById('btn-daily-add').addEventListener('click', () => {
     save();
   }));
 document.getElementById('btn-bind-backup').addEventListener('click', bindBackupFile);
+
+/* ============ Task 18: 今日收尾与全局快捷键 ============ */
+document.getElementById('btn-summary').addEventListener('click', () => {
+  document.getElementById('summary-pre').textContent =
+    buildDailySummary(state.tasks, state.todayFocusMs, todayStr(Date.now()));
+  document.getElementById('modal-summary').classList.add('show');
+});
+document.getElementById('btn-summary-close').addEventListener('click', () =>
+  document.getElementById('modal-summary').classList.remove('show'));
+document.getElementById('btn-summary-copy').addEventListener('click', () =>
+  copyText(document.getElementById('summary-pre').textContent)
+    .then(ok => showToast(ok ? '已复制收尾总结' : '复制失败')));
+
+window.addEventListener('keydown', e => {
+  const inField = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+  if (e.key === 'Escape') {
+    const open = document.querySelector('.modal-backdrop.show');
+    if (open) { open.classList.remove('show'); return; }
+    if (state.focusSession) { exitFocus(); return; }
+    return;
+  }
+  if (inField || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'n' || e.key === 'N') { e.preventDefault(); document.getElementById('input-add').focus(); }
+  else if (e.key === '/') { e.preventDefault(); document.getElementById('search-input').focus(); }
+  else if (e.key === '1') showView('today');
+  else if (e.key === '2') showView('done');
+  else if (e.key === '3') showView('history');
+  else if (e.key === 'f' || e.key === 'F') {
+    if (state.focusSession) return;   // 已聚焦无操作
+    const target = zoneTasks('doing')[0] || zoneTasks('inbox')[0];
+    if (target) startFocus(target.id);
+  }
+});
 
 document.querySelectorAll('.modal-backdrop').forEach(bd =>
   bd.addEventListener('click', e => { if (e.target === bd) bd.classList.remove('show'); }));
