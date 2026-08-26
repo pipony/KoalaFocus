@@ -232,6 +232,29 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     </div>
   </div>
 </div>
+<div class="modal-backdrop" id="modal-io">
+  <div class="modal">
+    <h3>导出 / 导入</h3>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn" id="btn-export-today">导出今日（JSON 文件）</button>
+      <button class="btn" id="btn-export-all">导出全部数据（含历史与设置）</button>
+      <button class="btn" id="btn-import">从文件导入…</button>
+      <input type="file" id="import-file" accept=".json,application/json" style="display:none">
+    </div>
+    <p style="color:var(--text-2);font-size:13px;margin-top:12px">导入可选择「合并进 inbox」或「整体替换」。整体替换会覆盖当前全部数据。</p>
+  </div>
+</div>
+<div class="modal-backdrop" id="modal-import-mode">
+  <div class="modal">
+    <h3>导入模式</h3>
+    <p id="import-summary" style="color:var(--text-2);font-size:13px"></p>
+    <div class="modal-actions">
+      <button class="btn" id="btn-import-cancel">取消</button>
+      <button class="btn" id="btn-import-merge">合并进 inbox</button>
+      <button class="btn danger" id="btn-import-replace">整体替换</button>
+    </div>
+  </div>
+</div>
 <div id="toast" class="toast"></div>
 <script>
 /* PURE CORE START */
@@ -420,8 +443,7 @@ function loadState() {
   return fresh;
 }
 function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-function save() { saveState(); renderAll(); scheduleBackup(); }   // scheduleBackup 由 Task 16 提供，之前为空函数占位
-function scheduleBackup() {}
+function save() { saveState(); renderAll(); scheduleBackup(); }   // scheduleBackup 实装见 Task 16（debounce 写备份文件）
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -1057,6 +1079,138 @@ document.getElementById('btn-bulk-add-confirm').addEventListener('click', () => 
   document.getElementById('modal-bulk').classList.remove('show');
   showToast('已添加 ' + n + ' 项到 inbox' + (parsed.some(p => p.done) ? '（部分直接完成）' : ''));
 });
+
+/* ============ Task 16: 导出/导入与自动备份（File System Access API） ============ */
+function downloadJson(obj, filename) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const exportDate = () => todayStr(Date.now());
+document.getElementById('btn-export').addEventListener('click', () =>
+  document.getElementById('modal-io').classList.add('show'));
+// modal-io 关闭：点 backdrop 空白处统一关闭（见 Step 3 通用绑定）
+document.getElementById('btn-export-today').addEventListener('click', () => {
+  downloadJson({ type: 'todo-export', scope: 'today', exportedAt: Date.now(),
+    labels: state.settings.labels, tasks: state.tasks }, 'todo-today-' + exportDate() + '.json');
+  showToast('已导出今日');
+});
+document.getElementById('btn-export-all').addEventListener('click', () => {
+  downloadJson({ type: 'todo-export', scope: 'all', exportedAt: Date.now(), data: state },
+    'todo-backup-' + exportDate() + '.json');
+  showToast('已导出全部');
+});
+
+let pendingImport = null;
+document.getElementById('btn-import').addEventListener('click', () =>
+  document.getElementById('import-file').click());
+document.getElementById('import-file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const j = JSON.parse(reader.result);
+      if (!j || j.type !== 'todo-export') throw new Error('bad');
+      pendingImport = j;
+      const n = j.scope === 'all' ? (j.data.tasks || []).length + ' 今日 + ' + (j.data.history || []).length + ' 历史天'
+                                 : (j.tasks || []).length + ' 个今日事项';
+      document.getElementById('import-summary').textContent = '文件包含：' + n;
+      document.getElementById('modal-import-mode').classList.add('show');
+    } catch (err) { showToast('文件格式无法识别'); }
+  };
+  reader.readAsText(f);
+});
+function importTasksIntoInbox(tasks) {
+  let n = 0;
+  tasks.forEach(src => {
+    const c = deepClone(src);
+    const now = Date.now();
+    c.id = genId(now);
+    if (c.zone !== 'done') { c.zone = 'inbox'; c.completedAt = null; }
+    else if (!c.completedAt) c.completedAt = now;
+    c.rolledOver = false; c.focusMsToday = 0; c.minLine = null; c.minLineMet = false;
+    state.tasks.push(c); n++;
+  });
+  return n;
+}
+document.getElementById('btn-import-cancel').addEventListener('click', () =>
+  document.getElementById('modal-import-mode').classList.remove('show'));
+document.getElementById('btn-import-merge').addEventListener('click', () => {
+  if (!pendingImport) return;
+  const n = importTasksIntoInbox(pendingImport.scope === 'all' ? pendingImport.data.tasks : pendingImport.tasks);
+  pendingImport = null;
+  document.getElementById('modal-import-mode').classList.remove('show');
+  save(); showToast('已合并 ' + n + ' 项');
+});
+document.getElementById('btn-import-replace').addEventListener('click', () => {
+  if (!pendingImport) return;
+  if (!window.confirm('整体替换将覆盖当前全部数据，确定？')) return;
+  if (pendingImport.scope === 'all') state = migrate(deepClone(pendingImport.data));
+  else { state = defaultState(); importTasksIntoInbox(pendingImport.tasks); state.lastActiveDate = todayStr(Date.now()); }
+  pendingImport = null;
+  document.getElementById('modal-import-mode').classList.remove('show');
+  saveState(); renderAll(); showToast('已替换');
+});
+
+let backupHandle = null, backupTimer = null;
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open('todoAppBak', 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore('handles');
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+async function idbPut(k, v) { const db = await idbOpen(); return new Promise((res, rej) => { const tx = db.transaction('handles', 'readwrite'); tx.objectStore('handles').put(v, k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+async function idbGet(k) { const db = await idbOpen(); return new Promise((res, rej) => { const rq = db.transaction('handles').objectStore('handles').get(k); rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); }
+
+async function bindBackupFile() {
+  if (!('showSaveFilePicker' in window)) { showToast('此浏览器不支持自动备份，请用手动导出'); return; }
+  try {
+    backupHandle = await window.showSaveFilePicker({ suggestedName: 'todo-backup.json',
+      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }] });
+    await idbPut('backup', backupHandle);
+    state.settings.autoBackup.enabled = true;
+    saveState();
+    await writeBackup();
+    showToast('已绑定备份文件，数据将自动写入');
+  } catch (e) { /* 用户取消 */ }
+}
+async function writeBackup() {
+  if (!backupHandle) return;
+  try {
+    const w = await backupHandle.createWritable();
+    await w.write(JSON.stringify({ type: 'todo-export', scope: 'all', exportedAt: Date.now(), data: state }, null, 2));
+    await w.close();
+    state.settings.autoBackup.lastBackupAt = Date.now();
+    saveState();   // 注意：saveState 不触发 renderAll/scheduleBackup，避免循环
+  } catch (e) { /* 句柄失效（文件被删/改名）则静默，下次绑定修复 */ }
+}
+function scheduleBackup() {
+  if (!backupHandle) return;
+  clearTimeout(backupTimer);
+  backupTimer = setTimeout(writeBackup, 2000);
+}
+setInterval(() => { if (backupHandle) writeBackup(); }, 5 * 60 * 1000);
+// 启动时恢复句柄（需一次用户交互内 queryPermission；不足则等设置页重新绑定）
+(async () => {
+  try {
+    const h = await idbGet('backup');
+    if (h) {
+      const p = await h.queryPermission({ mode: 'readwrite' });
+      if (p === 'granted') backupHandle = h;
+      else state.settings.autoBackup.enabled = true;   // 标记已绑定但待重新授权，设置页显示提示
+    }
+  } catch (e) {}
+})();
+
+document.querySelectorAll('.modal-backdrop').forEach(bd =>
+  bd.addEventListener('click', e => { if (e.target === bd) bd.classList.remove('show'); }));
 
 applyTheme();
 checkRollover();
