@@ -880,7 +880,21 @@ document.getElementById('btn-ml-clear').addEventListener('click', () => {
   document.getElementById('modal-minline').classList.remove('show');
 });
 
+/* ============ Task 12: 跨天接线（boot/定时/可见性检测） ============ */
+function checkRollover() {
+  const r = rollover(state, Date.now());
+  if (!r.changed) return;
+  state = r.state;
+  saveState();
+  renderAll();
+  ensureFocusUi();
+  showToast('新的一天：昨日已完成已归档，遗留事项已滚入 inbox');
+}
+setInterval(checkRollover, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkRollover(); });
+
 applyTheme();
+checkRollover();
 showView('today');
 ensureFocusUi();
 </script>
