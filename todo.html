@@ -138,6 +138,15 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 #rest-countdown { font-size: 72px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); }
 .minline-form { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 12px 0; }
 .minline-form input[type="number"] { padding: 6px 8px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
+#modal-settings h4 { margin: 14px 0 8px; font-size: 14px; }
+.settings-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.settings-row input[type="text"] { flex: 1; min-width: 0; padding: 6px 10px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
+.settings-row input[type="color"] { width: 36px; height: 30px; border: none; background: none; cursor: pointer; }
+.daily-row { flex-wrap: wrap; }
+.daily-row .df-text { flex: 2; } .daily-row .df-labels { flex: 1; }
+.daily-row textarea { width: 100%; padding: 6px 10px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; font-size: 13px; resize: vertical; }
+.settings-params { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; }
+.settings-params input { padding: 5px 8px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
 </style>
 </head>
 <body>
@@ -253,6 +262,27 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
       <button class="btn" id="btn-import-merge">合并进 inbox</button>
       <button class="btn danger" id="btn-import-replace">整体替换</button>
     </div>
+  </div>
+</div>
+<div class="modal-backdrop" id="modal-settings">
+  <div class="modal" style="max-width:600px">
+    <h3>设置</h3>
+    <h4>标签</h4>
+    <div id="settings-labels"></div>
+    <div style="margin-top:6px"><button class="btn" id="btn-label-add">＋ 新增标签</button></div>
+    <h4 style="margin-top:18px">每日固定事项 <span style="font-size:12px;color:var(--text-2)">（每天自动加入 inbox）</span></h4>
+    <div id="settings-daily"></div>
+    <div style="margin-top:6px"><button class="btn" id="btn-daily-add">＋ 新增固定事项</button></div>
+    <h4 style="margin-top:18px">参数</h4>
+    <div class="settings-params">
+      <label>聚焦提醒 <input type="number" id="set-focus-min" min="1" style="width:64px"> 分钟</label>
+      <label>休息时长 <input type="number" id="set-rest-min" min="1" style="width:64px"> 分钟</label>
+      <label>正在处理上限 <input type="number" id="set-max-doing" min="1" style="width:64px"> 条</label>
+    </div>
+    <h4 style="margin-top:18px">自动备份</h4>
+    <p id="backup-status" style="font-size:13px;color:var(--text-2)"></p>
+    <button class="btn" id="btn-bind-backup">绑定备份文件</button>
+    <div class="modal-actions"><button class="btn primary" id="btn-settings-close">完成</button></div>
   </div>
 </div>
 <div id="toast" class="toast"></div>
@@ -1208,6 +1238,83 @@ setInterval(() => { if (backupHandle) writeBackup(); }, 5 * 60 * 1000);
     }
   } catch (e) {}
 })();
+
+// ===== 设置页（Task 17）=====
+function renderSettings() {
+  const lb = document.getElementById('settings-labels');
+  lb.innerHTML = '';
+  state.settings.labels.forEach((l, i) => {
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    row.innerHTML = '<input type="text" class="lbl-name" value="' + escapeHtml(l.name) + '">' +
+      '<input type="color" class="lbl-color" value="' + l.color + '">' +
+      '<button class="icon-btn lbl-del">✕</button>';
+    row.querySelector('.lbl-name').addEventListener('change', e => {
+      const nn = e.target.value.trim();
+      if (!nn) { e.target.value = l.name; return; }
+      state.tasks.forEach(t => t.labels = t.labels.map(x => x === l.name ? nn : x));
+      state.settings.dailyFixed.forEach(f => f.labels = (f.labels || []).map(x => x === l.name ? nn : x));
+      l.name = nn; save();
+    });
+    row.querySelector('.lbl-color').addEventListener('change', e => { l.color = e.target.value; save(); });
+    row.querySelector('.lbl-del').addEventListener('click', () => {
+      state.tasks.forEach(t => t.labels = t.labels.filter(x => x !== l.name));
+      state.settings.dailyFixed.forEach(f => f.labels = (f.labels || []).filter(x => x !== l.name));
+      state.settings.labels.splice(i, 1); save(); renderSettings();
+    });
+    lb.appendChild(row);
+  });
+  const dl = document.getElementById('settings-daily');
+  dl.innerHTML = '';
+  state.settings.dailyFixed.forEach((f, i) => {
+    const row = document.createElement('div');
+    row.className = 'settings-row daily-row';
+    row.innerHTML = '<input type="text" class="df-text" value="' + escapeHtml(f.text) + '" placeholder="事项文本">' +
+      '<input type="text" class="df-labels" value="' + escapeHtml((f.labels || []).join(',')) + '" placeholder="标签,逗号分隔">' +
+      '<textarea class="df-subs" rows="2" placeholder="子任务，每行一条">' + escapeHtml((f.subtasks || []).map(s => s.text).join('\n')) + '</textarea>' +
+      '<button class="icon-btn df-del">✕</button>';
+    row.querySelector('.df-text').addEventListener('change', e => { f.text = e.target.value.trim() || f.text; save(); });
+    row.querySelector('.df-labels').addEventListener('change', e => {
+      f.labels = e.target.value.split(/[,，]/).map(s => s.trim()).filter(Boolean); save();
+    });
+    row.querySelector('.df-subs').addEventListener('change', e => {
+      f.subtasks = e.target.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(s => ({ text: s, done: false }));
+      save();
+    });
+    row.querySelector('.df-del').addEventListener('click', () => { state.settings.dailyFixed.splice(i, 1); save(); renderSettings(); });
+    dl.appendChild(row);
+  });
+  document.getElementById('set-focus-min').value = state.settings.focusRemindMin;
+  document.getElementById('set-rest-min').value = state.settings.restMin;
+  document.getElementById('set-max-doing').value = state.settings.maxDoing;
+  document.getElementById('backup-status').textContent = state.settings.autoBackup.enabled
+    ? (backupHandle ? '已绑定，最近备份：' + new Date(state.settings.autoBackup.lastBackupAt || 0).toLocaleString()
+                    : '已绑定，刷新后需在设置页重新授权一次')
+    : '未绑定（' + ('showSaveFilePicker' in window ? '支持自动备份' : '当前浏览器不支持，请手动导出') + '）';
+}
+document.getElementById('btn-settings').addEventListener('click', () => {
+  renderSettings(); document.getElementById('modal-settings').classList.add('show');
+});
+document.getElementById('btn-settings-close').addEventListener('click', () =>
+  document.getElementById('modal-settings').classList.remove('show'));
+document.getElementById('btn-label-add').addEventListener('click', () => {
+  state.settings.labels.push({ name: '新标签' + (state.settings.labels.length + 1), color: '#5B8DEF' });
+  save(); renderSettings();
+});
+document.getElementById('btn-daily-add').addEventListener('click', () => {
+  state.settings.dailyFixed.push({ text: '新固定事项', labels: [], subtasks: [] });
+  save(); renderSettings();
+});
+['set-focus-min','set-rest-min','set-max-doing'].forEach(id =>
+  document.getElementById(id).addEventListener('change', e => {
+    const v = parseInt(e.target.value, 10);
+    if (!v || v < 1) { renderSettings(); return; }
+    if (id === 'set-focus-min') state.settings.focusRemindMin = v;
+    if (id === 'set-rest-min') state.settings.restMin = v;
+    if (id === 'set-max-doing') state.settings.maxDoing = v;
+    save();
+  }));
+document.getElementById('btn-bind-backup').addEventListener('click', bindBackupFile);
 
 document.querySelectorAll('.modal-backdrop').forEach(bd =>
   bd.addEventListener('click', e => { if (e.target === bd) bd.classList.remove('show'); }));
