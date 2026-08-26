@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐨</text></svg>">
-<title>KoalaFocus · 今日待办</title>
+<title>KoalaFocus</title>
 <style>
 :root {
   --bg: #F5F6FA; --card: #FFFFFF; --card-border: #E5E7EB; --text: #1F2430;
@@ -278,7 +278,7 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
   <div class="modal">
     <h3>批量添加</h3>
     <p style="color:var(--text-2);font-size:13px">每行一个事项。行首 <code>- [ ] </code> 会忽略；粘贴复制格式（含 #标签 与缩进子任务）可完整恢复。</p>
-    <textarea id="bulk-text" rows="9" style="width:100%;padding:10px;border:1px solid var(--card-border);border-radius:10px;background:var(--card);color:var(--text);font-family:inherit;font-size:14px" placeholder="[ ] MySQL 压测  #脚本&#10;    [ ] 建表造数&#10;- [ ] 回复 XXX"></textarea>
+    <textarea id="bulk-text" rows="9" style="width:100%;padding:10px;border:1px solid var(--card-border);border-radius:10px;background:var(--card);color:var(--text);font-family:inherit;font-size:14px" placeholder="[ ] 事项1  #标签&#10;    [ ] 子事项1&#10;- [ ] 事项2"></textarea>
     <div class="modal-actions">
       <button class="btn" id="btn-bulk-cancel">取消</button>
       <button class="btn primary" id="btn-bulk-add-confirm">添加</button>
