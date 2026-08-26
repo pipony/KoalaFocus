@@ -71,12 +71,12 @@ section.zone { margin-bottom: 18px; }
 }
 .task-card:hover { transform: translateY(-1px); }
 .task-card.doing { border-left: 3px solid var(--accent); }
-.task-card.focused { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak), var(--shadow); }
+.task-card.focused { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak), var(--shadow); transform: scale(1.01); }
 .task-row { display: flex; align-items: center; gap: 8px; }
 .task-text { flex: 1; cursor: pointer; }
 .task-card.done-item .task-text { color: var(--text-2); text-decoration: line-through; }
 .card-badges { display: flex; align-items: center; gap: 6px; }
-.tag-badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; color: #fff; }
+.tag-badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; color: #fff; border: 1px solid rgba(255,255,255,.25); }   /* 深色模式下深底徽章（如「深度」#1E293B）白描边保可读，浅色下近无感 */
 .sub-count { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .rollover-mark { font-size: 11px; color: var(--danger); border: 1px solid currentColor; border-radius: 4px; padding: 0 3px; }
 .min-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
@@ -147,6 +147,11 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .daily-row textarea { width: 100%; padding: 6px 10px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; font-size: 13px; resize: vertical; }
 .settings-params { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; }
 .settings-params input { padding: 5px 8px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
+/* Task 19: 视觉打磨 */
+#view-today,#view-done,#view-history { animation: fadeIn .2s; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 4px; }
 </style>
 </head>
 <body>
@@ -1005,16 +1010,19 @@ document.getElementById('btn-rest-go').addEventListener('click', () => {
 });
 
 let restTimer = null, restEndsAt = 0;
+function restCountdownText(leftMs) {
+  const s = Math.ceil(leftMs / 1000);
+  return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+}
 function startRest() {
   restEndsAt = Date.now() + state.settings.restMin * 60000;
   document.body.classList.add('resting');
   document.getElementById('rest-overlay').classList.add('show');
+  document.getElementById('rest-countdown').textContent = restCountdownText(restEndsAt - Date.now());   // Task 19：首拍即显正确值，避免静态 05:00 闪现
   restTimer = setInterval(() => {
     const left = restEndsAt - Date.now();
     if (left <= 0) { endRest(); return; }
-    const s = Math.ceil(left / 1000);
-    document.getElementById('rest-countdown').textContent =
-      String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    document.getElementById('rest-countdown').textContent = restCountdownText(left);
   }, 500);
 }
 function endRest() {
@@ -1095,15 +1103,16 @@ function copyOne(id) {
 
 function applyParsed(parsed) {
   parsed = parsed.filter(p => p.text && p.text.trim());   // 空文本项跳过：#标签-only 行不建鬼卡（Task 3 评审裁定）
-  let n = 0;
+  if (!parsed.length) return { added: 0, doneCount: 0 };   // Task 19：过滤后为空不落库、不触发重绘
+  let added = 0, doneCount = 0;
   parsed.forEach(p => {
     createTask(p.text, p.labels, p.subtasks);
     const t = state.tasks[state.tasks.length - 1];
-    if (p.done) { t.zone = 'done'; t.completedAt = Date.now(); }
-    n++;
+    if (p.done) { t.zone = 'done'; t.completedAt = Date.now(); doneCount++; }
+    added++;
   });
   save();
-  return n;
+  return { added: added, doneCount: doneCount };
 }
 document.getElementById('btn-bulk-add').addEventListener('click', () => {
   document.getElementById('modal-bulk').classList.add('show');
@@ -1113,11 +1122,11 @@ document.getElementById('btn-bulk-cancel').addEventListener('click', () =>
   document.getElementById('modal-bulk').classList.remove('show'));
 document.getElementById('btn-bulk-add-confirm').addEventListener('click', () => {
   const parsed = parseBulkText(document.getElementById('bulk-text').value);
-  if (!parsed.length) { showToast('没有解析到事项'); return; }
-  const n = applyParsed(parsed);
+  const r = applyParsed(parsed);
+  if (r.added === 0) { showToast('没有解析到事项'); return; }   // Task 19：空结果保留粘贴文本、不关弹窗
   document.getElementById('bulk-text').value = '';
   document.getElementById('modal-bulk').classList.remove('show');
-  showToast('已添加 ' + n + ' 项到 inbox' + (parsed.some(p => p.done) ? '（部分直接完成）' : ''));
+  showToast('已添加 ' + r.added + ' 项到 inbox' + (r.doneCount > 0 ? '（部分直接完成）' : ''));
 });
 
 /* ============ Task 16: 导出/导入与自动备份（File System Access API） ============ */
@@ -1182,7 +1191,7 @@ document.getElementById('btn-import-cancel').addEventListener('click', () =>
   document.getElementById('modal-import-mode').classList.remove('show'));
 document.getElementById('btn-import-merge').addEventListener('click', () => {
   if (!pendingImport) return;
-  const n = importTasksIntoInbox(pendingImport.scope === 'all' ? pendingImport.data.tasks : pendingImport.tasks);
+  const n = importTasksIntoInbox(pendingImport.scope === 'all' ? (pendingImport.data.tasks || []) : (pendingImport.tasks || []));   // Task 19：手编文件缺 tasks 字段守卫
   pendingImport = null;
   document.getElementById('modal-import-mode').classList.remove('show');
   save(); showToast('已合并 ' + n + ' 项');
@@ -1257,7 +1266,7 @@ function renderSettings() {
     const row = document.createElement('div');
     row.className = 'settings-row';
     row.innerHTML = '<input type="text" class="lbl-name" value="' + escapeHtml(l.name) + '">' +
-      '<input type="color" class="lbl-color" value="' + l.color + '">' +
+      '<input type="color" class="lbl-color" value="' + escapeHtml(l.color) + '">' +
       '<button class="icon-btn lbl-del">✕</button>';
     row.querySelector('.lbl-name').addEventListener('change', e => {
       const nn = e.target.value.trim();
