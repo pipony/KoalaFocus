@@ -168,7 +168,6 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .task-link { flex: 1; min-width: 0; color: var(--accent); text-decoration: none; cursor: pointer; word-break: break-all; }
 .task-link:hover { text-decoration: underline; }
 .task-card.done-item .task-link { color: var(--text-2); text-decoration: line-through; }
-.note-badge { font-size: 11px; }
 .note-box { margin-bottom: 8px; }
 .note-show { display: flex; align-items: flex-start; gap: 6px; padding: 6px 8px; border: 1px dashed var(--card-border); border-radius: 8px; font-size: 13px; min-height: 30px; }
 .note-show:hover { border-color: var(--accent); }
@@ -745,7 +744,6 @@ function buildTaskCard(task) {
         (task.subtasks && task.subtasks.length ? '<span class="sub-count">' + doneSubs + '/' + task.subtasks.length + '</span>' : '') +
         (task.minLine ? '<span class="min-dot' + (task.minLineMet ? ' met' : '') + '" title="最低完成线"></span>' : '') +
         (task.focusMs > 0 ? '<span class="focus-badge" title="累计聚焦">⏱ ' + formatDuration(task.focusMs) + '</span>' : '') +
-        (task.note ? '<span class="note-badge" title="有备注">📝</span>' : '') +
         (task.remindAt && !task.reminded ? '<span class="remind-badge" title="提醒时间">⏰ ' + fmtTimeHM(task.remindAt) + '</span>' : '') +
       '</span>' +
       (task.subtasks && task.subtasks.length
