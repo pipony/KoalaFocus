@@ -156,13 +156,32 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 #brand { font-size: 17px; font-weight: 700; color: var(--accent); white-space: nowrap; }
 #date-label { font-weight: 500; margin-left: 26px; }
 .date-num { color: var(--accent); font-weight: 600; }
-.date-week { color: var(--text-2); font-size: 14px; margin-left: 4px; }
+.date-unit, .date-week { color: var(--text-2); font-weight: 500; }
+.date-week { margin-left: 4px; }
 .text-edit { flex: 1; min-width: 0; font: inherit; padding: 2px 6px; border: 1px solid var(--accent); border-radius: 6px; background: var(--card); color: var(--text); }
 .focus-badge { font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .remind-badge { font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; }
 .lbl-prio { width: 54px; padding: 6px 6px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
 .settings-row select { padding: 5px 8px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
+/* 批次4 增补 */
+.task-link { flex: 1; min-width: 0; color: var(--accent); text-decoration: none; cursor: pointer; word-break: break-all; }
+.task-link:hover { text-decoration: underline; }
+.task-card.done-item .task-link { color: var(--text-2); text-decoration: line-through; }
+.note-badge { font-size: 11px; }
+.note-box { margin-top: 8px; }
+.note-input { width: 100%; padding: 6px 10px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; font-size: 13px; resize: vertical; }
+.note-readonly { margin-top: 6px; font-size: 13px; color: var(--text-2); white-space: pre-wrap; }
+.cheer-word {
+  position: fixed; top: 18%; left: 50%; transform: translateX(-50%);
+  font-size: 30px; font-weight: 700; color: var(--accent); z-index: 501; pointer-events: none; white-space: nowrap;
+  animation: cheerPop .35s ease-out, cheerFade .4s ease-in 1s forwards;
+}
+@keyframes cheerPop { from { transform: translateX(-50%) scale(.5); opacity: 0; } }
+@keyframes cheerFade { to { opacity: 0; transform: translateX(-50%) translateY(-18px); } }
+#timeline-track { position: relative; height: 30px; border-radius: 8px; background: var(--card-border); overflow: hidden; }
+#timeline-blocks > div { position: absolute; top: 0; height: 100%; background: var(--accent); opacity: .85; border-radius: 4px; }
+#timeline-hours { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-2); margin-top: 4px; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -310,6 +329,10 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
         <option value="l">大</option><option value="xl">特大</option>
       </select></label>
     </div>
+    <div class="settings-row" style="margin-top:6px">
+      <button class="btn" id="btn-load-fontfile">加载字体文件…</button>
+      <span id="fontfile-status" style="font-size:12px;color:var(--text-2)"></span>
+    </div>
     <p style="color:var(--text-2);font-size:12px">字体只能选用本机已安装的（离线无法下载）；字号为整体缩放。标签行的优先级数字越大越靠前，可为负。</p>
     <h4 style="margin-top:18px">自动备份</h4>
     <p id="backup-status" style="font-size:13px;color:var(--text-2)"></p>
@@ -331,7 +354,7 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
   <div class="modal">
     <h3>设置提醒</h3>
     <p id="remind-task-name" style="color:var(--text-2);font-size:13px"></p>
-    <div class="minline-form"><label>今天 <input type="time" id="remind-time" step="300"></label></div>
+    <div class="minline-form"><label>今天 <select id="remind-hour"></select> 时 <select id="remind-min"></select> 分</label></div>
     <p style="color:var(--text-2);font-size:12px">仅页面打开时提醒；错过的时间在下次打开时补弹。</p>
     <div class="modal-actions">
       <button class="btn" id="btn-remind-clear">清除提醒</button>
@@ -348,6 +371,15 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
       <button class="btn primary" id="btn-reminder-start">开始处理</button>
       <button class="btn" id="btn-reminder-ok">知道了</button>
     </div>
+  </div>
+</div>
+<div class="modal-backdrop" id="modal-timeline">
+  <div class="modal" style="max-width:640px">
+    <h3>今日聚焦时间轴（9:00–22:00）</h3>
+    <div id="timeline-track"><div id="timeline-blocks"></div></div>
+    <div id="timeline-hours"></div>
+    <p id="timeline-summary" style="color:var(--text-2);font-size:13px;margin-top:10px"></p>
+    <div class="modal-actions"><button class="btn primary" id="btn-timeline-close">关闭</button></div>
   </div>
 </div>
 <div id="toast" class="toast"></div>
@@ -385,6 +417,7 @@ function defaultState(now) {
     tasks: [],
     todayFocusMs: 0,
     focusSession: null,
+    focusLog: [],   // 批次4：今日聚焦起止区间（时间轴用，跨天清零）
     history: [],
     settings: {
       theme: 'auto',
@@ -438,6 +471,7 @@ function rollover(state, now) {
   });
   // 4) 重置
   next.todayFocusMs = 0;
+  next.focusLog = [];
   next.lastActiveDate = today;
   return { state: next, changed: true };
 }
@@ -507,9 +541,24 @@ function settleFocusSession(state, nowMs) {
     next.tasks[idx] = checkMinLine(next.tasks[idx]);
   }
   next.todayFocusMs += sessionMs;
+  next.focusLog = (next.focusLog || []).concat([{ start: next.focusSession.startAt, end: nowMs }]);   // 批次4：记录聚焦区间
   next.focusSession = null;
   const needRest = sessionMs >= next.settings.focusRemindMin * 60000;
   return { state: next, sessionMs: sessionMs, needRest: needRest };
+}
+
+function layoutTimeline(segments, dayStartMs, startHour, endHour) {   // 批次4：聚焦区间 → 时间轴百分比块（边界外钳制，零宽丢弃）
+  const spanMs = (endHour - startHour) * 3600000;
+  const viewStart = dayStartMs + startHour * 3600000;
+  const out = [];
+  (segments || []).forEach(s => {
+    const a = Math.max(s.start, viewStart);
+    const b = Math.min(s.end, viewStart + spanMs);
+    if (b - a <= 0) return;
+    out.push({ leftPct: Math.round((a - viewStart) / spanMs * 10000) / 100,
+               widthPct: Math.round((b - a) / spanMs * 10000) / 100 });
+  });
+  return out;
 }
 
 function labelPriorityOf(task, labels) {
@@ -526,7 +575,7 @@ function labelPriorityOf(task, labels) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, labelPriorityOf };
+  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, labelPriorityOf, layoutTimeline };
 }
 /* PURE CORE END */
 
@@ -540,6 +589,7 @@ function migrate(s) {
   s.settings = Object.assign({}, d.settings, s.settings || {});
   if (!Array.isArray(s.tasks)) s.tasks = [];
   if (!Array.isArray(s.history)) s.history = [];
+  if (!Array.isArray(s.focusLog)) s.focusLog = [];   // 批次4：旧数据补时间轴区间字段
   if (!Array.isArray(s.settings.labels) || !s.settings.labels.length) s.settings.labels = d.settings.labels;
   return s;
 }
@@ -586,8 +636,9 @@ function legacyCopy(text) {
 const WEEK = ['日','一','二','三','四','五','六'];
 function renderTopbar() {
   const d = new Date();
-  document.getElementById('date-label').innerHTML =   // 批次3：月日数字用品牌蓝
-    '<span class="date-num">' + (d.getMonth() + 1) + '月' + d.getDate() + '日</span>' +
+  document.getElementById('date-label').innerHTML =   // 批次4：数字品牌蓝；月/日/周几灰色、与日期同字号
+    '<span class="date-num">' + (d.getMonth() + 1) + '</span><span class="date-unit">月</span>' +
+    '<span class="date-num">' + d.getDate() + '</span><span class="date-unit">日</span>' +
     '<span class="date-week">周' + WEEK[d.getDay()] + '</span>';
   document.getElementById('focus-total').textContent = formatDuration(state.todayFocusMs);
   const p = computeProgress(state.tasks);
@@ -668,16 +719,22 @@ function buildTaskCard(task) {
   const doneSubs = (task.subtasks || []).filter(s => s.done).length;
   const labelsHtml = task.labels.map(l =>
     '<span class="tag-badge" style="background:' + escapeHtml(labelColor(l)) + '">' + escapeHtml(l) + '</span>').join('');
+  const urlHref = /^(https?:\/\/\S+|www\.\S+)$/i.test(String(task.text || '').trim())
+    ? (/^https?:/i.test(task.text.trim()) ? task.text.trim() : 'https://' + task.text.trim())
+    : '';   // 批次4：整体是网址时渲染为可点击链接（file:// 下新标签打开）
   card.innerHTML =
     '<div class="task-row">' +
       '<input type="checkbox" class="task-check" ' + (task.zone === 'done' ? 'checked' : '') + '>' +
-      '<span class="task-text">' + escapeHtml(task.text) + '</span>' +
+      (urlHref
+        ? '<a class="task-link" target="_blank" rel="noopener" href="' + escapeHtml(urlHref) + '">' + escapeHtml(task.text) + '</a>'
+        : '<span class="task-text">' + escapeHtml(task.text) + '</span>') +
       '<span class="card-badges">' + labelsHtml +
         (task.subtasks && task.subtasks.length ? '<span class="sub-count">' + doneSubs + '/' + task.subtasks.length + '</span>' : '') +
         (task.rolledOver ? '<span class="rollover-mark" title="昨日遗留">遗</span>' : '') +
         (task.minLine ? '<span class="min-dot' + (task.minLineMet ? ' met' : '') + '" title="最低完成线"></span>' : '') +
         (task.focusMs > 0 ? '<span class="focus-badge" title="累计聚焦">⏱ ' + formatDuration(task.focusMs) + '</span>' : '') +
-        (task.remindAt ? '<span class="remind-badge" title="提醒时间">⏰ ' + fmtTimeHM(task.remindAt) + '</span>' : '') +
+        (task.note ? '<span class="note-badge" title="有备注">📝</span>' : '') +
+        (task.remindAt && !task.reminded ? '<span class="remind-badge" title="提醒时间">⏰ ' + fmtTimeHM(task.remindAt) + '</span>' : '') +
       '</span>' +
       (task.subtasks && task.subtasks.length
         ? '<button class="icon-btn expand-btn" data-action="expand" title="子任务">' +
@@ -704,6 +761,7 @@ function completeTask(id) {
   t.completedAt = Date.now();
   t.remindAt = null; t.reminded = false;   // 批次2：完成即清提醒，避免已完成事项到点仍弹窗
   save();
+  celebrate('big');   // 批次4：完成庆祝
 }
 
 function deleteTask(id) {
@@ -716,7 +774,7 @@ function startEditTaskText(id) {   // 批次2：就地修改事项文字（Enter
   const t = state.tasks.find(x => x.id === id);
   const card = document.querySelector('.task-card[data-id="' + id + '"]');
   if (!t || !card) return;
-  const span = card.querySelector('.task-text');
+  const span = card.querySelector('.task-text, .task-link');
   if (!span) return;
   const input = document.createElement('input');
   input.type = 'text';
@@ -759,7 +817,8 @@ function fillSubtaskBox(card, task, readOnly) {
   box.style.display = '';
   if (readOnly) {   // 历史归档卡：只读视图（Task 13 裁定：归档不可篡改，仅查看子任务）
     box.innerHTML = (task.subtasks || []).map(s =>
-      '<div class="sub-row"><span class="' + (s.done ? 'sub-done' : '') + '">' + escapeHtml(s.text) + '</span></div>').join('');
+      '<div class="sub-row"><span class="' + (s.done ? 'sub-done' : '') + '">' + escapeHtml(s.text) + '</span></div>').join('') +
+      (task.note ? '<div class="note-readonly">📝 ' + escapeHtml(task.note) + '</div>' : '');
     return;
   }
   box.innerHTML = (task.subtasks || []).map(s =>
@@ -774,7 +833,8 @@ function fillSubtaskBox(card, task, readOnly) {
       : '<div class="label-picker">' + state.settings.labels.map(l =>
       '<button class="chip' + (task.labels.includes(l.name) ? ' on' : '') + '" data-label="' + escapeHtml(l.name) + '"' +
       (task.labels.includes(l.name) ? ' style="background:' + escapeHtml(l.color) + '"' : '') + '>' + escapeHtml(l.name) + '</button>').join('') +
-      '</div>');
+      '</div>') +
+    '<div class="note-box"><textarea class="note-input" rows="2" placeholder="备注…（展开时可编辑）">' + escapeHtml(task.note || '') + '</textarea></div>';   // 批次4：备注仅展开时录入/展示
   box.querySelector('.sub-input').addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
     const text = e.target.value.trim();
@@ -790,6 +850,7 @@ function fillSubtaskBox(card, task, readOnly) {
     const s = task.subtasks.find(x => x.id === sid);
     if (s) {
       s.done = e.target.checked;
+      if (e.target.checked) celebrate('small');   // 批次4：勾选子任务小庆祝
       const ti = state.tasks.indexOf(task);   // 历史归档卡不在 state.tasks（Task 13），跳过回写
       if (ti >= 0) state.tasks[ti] = checkMinLine(task);
       save(); refreshCard(task.id);
@@ -805,6 +866,8 @@ function fillSubtaskBox(card, task, readOnly) {
       save(); refreshCard(task.id);
     }
   });
+  const noteInput = box.querySelector('.note-input');   // 批次4：备注保存
+  if (noteInput) noteInput.addEventListener('change', e => { task.note = e.target.value.trim(); save(); });
 }
 
 function toggleExpand(id, forceOpen) {
@@ -998,6 +1061,7 @@ let dragCtx = null;   // {taskId, fromZone}
 function moveTask(id, toZone, toIndex) {
   const t = state.tasks.find(x => x.id === id);
   if (!t) return false;
+  const wasDone = t.zone === 'done';
   if (toZone === 'doing' && t.zone !== 'doing' &&
       zoneTasks('doing').length >= state.settings.maxDoing) {
     showToast('正在处理最多 ' + state.settings.maxDoing + ' 条，先移出一条'); return false;
@@ -1011,6 +1075,7 @@ function moveTask(id, toZone, toIndex) {
   const before = zoneList.slice(0, idxInState), after = zoneList.slice(idxInState);
   state.tasks = state.tasks.filter(x => x.zone !== toZone).concat(before, [t], after);
   save();
+  if (toZone === 'done' && !wasDone) celebrate('big');   // 批次4：拖入完成也庆祝（区内重排/复活不触发）
   return true;
 }
 
@@ -1281,29 +1346,42 @@ document.getElementById('btn-bulk-add-confirm').addEventListener('click', () => 
 
 /* ============ 批次2：任务提醒（到点弹窗；错过补弹） ============ */
 let remindTaskId = null;
+(function buildRemindSelects() {   // 批次4：小时 00-23 / 分钟 00-55 按 5 步进（原生 time 控件 step 在部分 Edge 不生效）
+  const h = document.getElementById('remind-hour'), m = document.getElementById('remind-min');
+  for (let i = 0; i < 24; i++) {
+    const v = String(i).padStart(2, '0');
+    h.appendChild(Object.assign(document.createElement('option'), { value: v, textContent: v }));
+  }
+  for (let i = 0; i < 60; i += 5) {
+    const v = String(i).padStart(2, '0');
+    m.appendChild(Object.assign(document.createElement('option'), { value: v, textContent: v }));
+  }
+})();
 function openRemindDialog(id) {
   const t = state.tasks.find(x => x.id === id);
   if (!t) return;
   remindTaskId = id;
   document.getElementById('remind-task-name').textContent = t.text;
-  const d = t.remindAt ? new Date(t.remindAt) : new Date(Date.now() + 30 * 60000);
-  document.getElementById('remind-time').value = fmtTimeHM(d.getTime());
+  const d = t.remindAt ? new Date(t.remindAt)
+    : (() => { const x = new Date(Date.now() + 30 * 60000); x.setMinutes(Math.ceil(x.getMinutes() / 5) * 5, 0, 0); return x; })();
+  document.getElementById('remind-hour').value = String(d.getHours()).padStart(2, '0');
+  document.getElementById('remind-min').value = String(Math.floor(d.getMinutes() / 5) * 5).padStart(2, '0');
   document.getElementById('modal-remind').classList.add('show');
 }
 document.getElementById('btn-remind-cancel').addEventListener('click', () =>
   document.getElementById('modal-remind').classList.remove('show'));
 document.getElementById('btn-remind-save').addEventListener('click', () => {
   const t = state.tasks.find(x => x.id === remindTaskId);
-  const v = document.getElementById('remind-time').value;
   if (!t) { document.getElementById('modal-remind').classList.remove('show'); return; }
-  if (!v || !/^\d{2}:\d{2}$/.test(v)) { showToast('请选择提醒时间'); return; }
+  const hh = document.getElementById('remind-hour').value, mm = document.getElementById('remind-min').value;
+  if (hh === '' || mm === '') { showToast('请选择提醒时间'); return; }
   const d = new Date();
-  d.setHours(parseInt(v.slice(0, 2), 10), parseInt(v.slice(3, 5), 10), 0, 0);
+  d.setHours(parseInt(hh, 10), parseInt(mm, 10), 0, 0);
   t.remindAt = d.getTime();
   t.reminded = false;
   document.getElementById('modal-remind').classList.remove('show');
   save();
-  showToast('已设置提醒 ' + v);
+  showToast('已设置提醒 ' + hh + ':' + mm);
 });
 document.getElementById('btn-remind-clear').addEventListener('click', () => {
   const t = state.tasks.find(x => x.id === remindTaskId);
@@ -1314,7 +1392,7 @@ function checkReminders() {   // 到点弹窗：仅页面打开时有效；错�
   const t = state.tasks.find(x => x.remindAt && !x.reminded && x.remindAt <= Date.now());
   if (!t) return;
   t.reminded = true;
-  saveState();
+  save();   // 批次4：save 触发重绘——徽标条件含 !reminded，触发后立即从卡片消失
   document.getElementById('reminder-fire-text').textContent = t.text;
   document.getElementById('btn-reminder-start').onclick = () => {   // 批次3：开始处理——移入正在处理（doing 满员由 moveTask 提示）
     document.getElementById('modal-reminder-fire').classList.remove('show');
@@ -1326,6 +1404,117 @@ function checkReminders() {   // 到点弹窗：仅页面打开时有效；错�
 document.getElementById('btn-reminder-ok').addEventListener('click', () =>
   document.getElementById('modal-reminder-fire').classList.remove('show'));
 setInterval(checkReminders, 20000);
+
+/* ============ 批次4：完成庆祝动画（彩带 + 随机鼓励语） ============ */
+const CHEER_WORDS = ['Well done! 🎉', 'Good job! 👏', 'Nice! ✨', 'Clever! 🧠', 'Awesome! 🚀', 'Perfect! 💯', 'Got it! ✅', 'Boom! 💥', 'Here we go! 🔥', 'High five! 🙌'];
+const CHEER_COLORS = ['#4F6DF5', '#F59E0B', '#10B981', '#EC4899', '#7C5CFF', '#EF4444', '#0EA5E9'];
+let cheerCanvas = null;
+function celebrate(size) {
+  const n = size === 'big' ? 90 : 30;
+  if (!cheerCanvas) {
+    cheerCanvas = document.createElement('canvas');
+    cheerCanvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:500';
+    document.body.appendChild(cheerCanvas);
+  }
+  const dpr = window.devicePixelRatio || 1;
+  cheerCanvas.width = innerWidth * dpr; cheerCanvas.height = innerHeight * dpr;
+  const ctx = cheerCanvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = innerWidth, H = innerHeight;
+  const parts = [];
+  for (let i = 0; i < n; i++) {
+    parts.push({ x: W / 2 + (Math.random() - 0.5) * 180, y: H * 0.35 + (Math.random() - 0.5) * 40,
+      vx: (Math.random() - 0.5) * 11, vy: -4 - Math.random() * 8,
+      w: 5 + Math.random() * 6, h: 8 + Math.random() * 8,
+      rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.3,
+      color: CHEER_COLORS[Math.random() * CHEER_COLORS.length | 0], life: 1 });
+  }
+  const word = document.createElement('div');
+  word.className = 'cheer-word';
+  word.textContent = CHEER_WORDS[Math.random() * CHEER_WORDS.length | 0];
+  document.body.appendChild(word);
+  setTimeout(() => word.remove(), 1400);
+  const t0 = performance.now();
+  (function frame(t) {
+    ctx.clearRect(0, 0, W, H);
+    let alive = 0;
+    parts.forEach(p => {
+      p.vy += 0.22; p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      if (t - t0 > 900) p.life -= 0.04;
+      if (p.life > 0 && p.y < H + 20) {
+        alive++;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillStyle = p.color; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      }
+    });
+    if (alive && t - t0 < 2200) requestAnimationFrame(frame);
+    else ctx.clearRect(0, 0, W, H);
+  })(t0);
+}
+
+/* ============ 批次4：今日聚焦时间轴（点击第一行日期弹出，9:00–22:00） ============ */
+document.getElementById('date-label').addEventListener('click', () => {
+  renderTimeline();
+  document.getElementById('modal-timeline').classList.add('show');
+});
+document.getElementById('btn-timeline-close').addEventListener('click', () =>
+  document.getElementById('modal-timeline').classList.remove('show'));
+(function buildTimelineHours() {
+  const box = document.getElementById('timeline-hours');
+  for (let h = 9; h <= 22; h++) {
+    const s = document.createElement('span');
+    s.textContent = h;
+    box.appendChild(s);
+  }
+})();
+function renderTimeline() {
+  const segs = (state.focusLog || []).slice();
+  if (state.focusSession) segs.push({ start: state.focusSession.startAt, end: Date.now() });   // 进行中的会话实时计入
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const blocks = layoutTimeline(segs, dayStart.getTime(), 9, 22);
+  document.getElementById('timeline-blocks').innerHTML =
+    blocks.map(b => '<div style="left:' + b.leftPct + '%;width:' + b.widthPct + '%"></div>').join('');
+  const liveMs = state.focusSession ? Date.now() - state.focusSession.startAt : 0;
+  document.getElementById('timeline-summary').textContent =
+    '共 ' + blocks.length + ' 段聚焦 · 总时长 ' + formatDuration(state.todayFocusMs + liveMs) +
+    (state.focusSession ? '（含进行中）' : '') + '。时间轴仅显示 9:00–22:00，界外聚焦段会被裁剪。';
+}
+
+/* ============ 批次4：本机字体文件加载（FontFace，离线可用） ============ */
+const CUSTOM_FONT_NAME = 'KoalaCustomFont';
+let customFontOk = false;
+async function loadFontFileFromHandle(h) {
+  const file = await h.getFile();
+  const buf = await file.arrayBuffer();
+  const face = new FontFace(CUSTOM_FONT_NAME, buf);
+  await face.load();
+  document.fonts.add(face);
+  customFontOk = true;
+  state.settings.fontFamily = CUSTOM_FONT_NAME;
+  applyFont(); saveState();
+}
+document.getElementById('btn-load-fontfile').addEventListener('click', async () => {
+  if (!('showOpenFilePicker' in window)) { showToast('此浏览器不支持选择字体文件，请用字体名输入框'); return; }
+  try {
+    const [h] = await window.showOpenFilePicker({ types: [{ description: '字体文件', accept: { 'font/*': ['.ttf', '.otf', '.woff', '.woff2'] } }] });
+    await idbPut('fontfile', h);
+    await loadFontFileFromHandle(h);
+    showToast('字体文件已加载并应用');
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;   // 用户取消
+    showToast('字体文件加载失败');
+  }
+});
+(async () => {   // 启动时恢复字体文件（仅当权限仍为 granted）
+  try {
+    const h = await idbGet('fontfile');
+    if (h && (await h.queryPermission({ mode: 'read' })) === 'granted') await loadFontFileFromHandle(h);
+  } catch (e) {}
+})();
 
 /* ============ Task 16: 导出/导入与自动备份（File System Access API） ============ */
 function downloadJson(obj, filename) {
@@ -1516,6 +1705,9 @@ function renderSettings() {
   document.getElementById('set-max-doing').value = state.settings.maxDoing;
   document.getElementById('set-font').value = state.settings.fontFamily || '';   // 批次2：外观
   document.getElementById('set-fontsize').value = state.settings.fontSize || 'm';
+  document.getElementById('fontfile-status').textContent = customFontOk   // 批次4：字体文件状态
+    ? '字体文件已加载 ✓'
+    : (state.settings.fontFamily === 'KoalaCustomFont' ? '上次加载过字体文件，本次待重新选择授权' : '或直接加载本机字体文件（.ttf/.otf/.woff/.woff2）');
   document.getElementById('backup-status').textContent = state.settings.autoBackup.enabled
     ? (backupHandle ? '已绑定，最近备份：' + new Date(state.settings.autoBackup.lastBackupAt || 0).toLocaleString()
                     : '已绑定，刷新后需在设置页重新授权一次')

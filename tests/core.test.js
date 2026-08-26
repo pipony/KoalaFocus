@@ -257,5 +257,30 @@ t('rollover：提醒字段跨天清空', () => {
   eq(by(r.state, 'B').reminded, false);
 });
 
+// ---- 批次4：focusLog / 时间轴 ----
+t('settleFocusSession：追加今日聚焦区间到 focusLog', () => {
+  const task = mkTask('doing', 'A');
+  const s = mkState({ tasks: [task], focusSession: { taskId: task.id, startAt: 1000000 }, focusLog: [{start: 5, end: 600000}] });
+  const r = core.settleFocusSession(s, 1000000 + 120000);
+  eq(r.state.focusLog, [{start:5,end:600000},{start:1000000,end:1120000}]);
+});
+t('rollover：focusLog 跨天清空', () => {
+  const s = mkState({ lastActiveDate: '2026-08-25', focusLog: [{start:1,end:2}], tasks: [mkTask('inbox','B')] });
+  const r = core.rollover(s, new Date(2026, 7, 26, 9, 0));
+  eq(r.state.focusLog, []);
+});
+t('layoutTimeline：区间映射、边界钳制与丢弃零宽', () => {
+  const base = new Date(2026, 7, 26, 0, 0, 0).getTime();
+  const r1 = core.layoutTimeline([{start: base + 10*3600000, end: base + 11*3600000}], base, 9, 22);
+  eq(r1.length, 1);
+  if (Math.abs(r1[0].leftPct - 100/13) > 0.01) throw new Error('left wrong: ' + r1[0].leftPct);
+  if (Math.abs(r1[0].widthPct - 100/13) > 0.01) throw new Error('width wrong: ' + r1[0].widthPct);
+  const r2 = core.layoutTimeline([{start: base + 8*3600000, end: base + 9.5*3600000}], base, 9, 22);
+  eq(r2.length, 1);
+  if (Math.abs(r2[0].leftPct) > 0.01) throw new Error('clamp-left wrong');
+  if (Math.abs(r2[0].widthPct - 50/13) > 0.01) throw new Error('clamp-width wrong');
+  eq(core.layoutTimeline([{start: base + 23*3600000, end: base + 23.5*3600000}], base, 9, 22), []);   // 完全在 22 点后丢弃
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
