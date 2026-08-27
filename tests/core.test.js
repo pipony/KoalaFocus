@@ -295,9 +295,8 @@ t('buildDailySummary：部分完成=当天有完成子事项（昨天勾选的�
     mkTask('inbox', 'E')
   ];
   const s = core.buildDailySummary(tasks, 0, '2026-08-26');
-  if (!s.includes('\n部分完成：\nB\n    子1\nC\n    子3')) throw new Error('missing partial block: ' + s);
+  if (!s.includes('\n部分完成：\nB\n    子1\nC\n    子3\n\n遗留：')) throw new Error('partial block wrong: ' + s);   // 区块后直接接遗留区，D/E 只在遗留
   if (s.includes('旧的')) throw new Error('昨天勾选的子任务不应出现');
-  if (s.includes('\nD') || s.includes('\nE')) throw new Error('D/E 不应出现在部分完成');
 });
 
 // ---- 批次12：休息提醒轮次累计 ----
