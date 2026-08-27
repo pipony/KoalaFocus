@@ -171,16 +171,16 @@ t('收尾总结完整格式', () => {
 正在处理 1 项
 
 今天完成：
-✓ MySQL 压测
-    ✓ 建表造数
-    ✓ 跑压测
-✓ 监控脚本
+MySQL 压测
+    建表造数
+    跑压测
+监控脚本
 
 遗留：
-→ 整理监控结论
+整理监控结论
 
 正在处理：
-→ Hermes 排查`);
+Hermes 排查`);
 });
 t('收尾总结：空节省略、无小时段时长', () => {
   const tasks = [mkTask('done', 'A'), mkTask('inbox', 'B')];
@@ -193,10 +193,10 @@ t('收尾总结：空节省略、无小时段时长', () => {
 正在处理 0 项
 
 今天完成：
-✓ A
+A
 
 遗留：
-→ B`);
+B`);
 });
 t('checkMinLine：focus 型按当日聚焦达成', () => {
   eq(core.checkMinLine(mkTask('doing', 'A', { minLine: { type: 'focus', minutes: 30 }, focusMsToday: 1800000 })).minLineMet, true);
@@ -291,9 +291,26 @@ t('buildDailySummary：未完成但有已完成子任务的区块', () => {
     mkTask('inbox', 'D')
   ];
   const s = core.buildDailySummary(tasks, 0, '2026-08-26');
-  if (!s.includes('\n部分完成：\n◐ B\n    ✓ 子1\n◐ C\n    ✓ 子3')) throw new Error('missing partial block: ' + s);
-  if (s.includes('◐ D')) throw new Error('D (无已完成子任务) 不应出现在部分完成');
-  if (s.includes('◐ A')) throw new Error('A (已完成) 不应出现在部分完成');
+  if (!s.includes('\n部分完成：\nB\n    子1\nC\n    子3')) throw new Error('missing partial block: ' + s);
+});
+
+// ---- 批次12：休息提醒轮次累计 ----
+t('settleFocusSession：轮次累计跨会话触发休息阈值', () => {
+  const a = mkTask('doing', 'A');
+  const s1 = mkState({ tasks: [a], focusSession: { taskId: a.id, startAt: 0 } });
+  const r1 = core.settleFocusSession(s1, 20 * 60000);   // 第一段 20min
+  eq(r1.needRest, false);
+  eq(r1.state.cycleFocusMs, 20 * 60000);
+  const b = mkTask('doing', 'B');
+  const s2 = mkState({ tasks: [b], cycleFocusMs: 20 * 60000, focusSession: { taskId: b.id, startAt: 0 } });
+  const r2 = core.settleFocusSession(s2, 26 * 60000);   // 第二段 26min，累计 46 ≥ 45
+  eq(r2.needRest, true);
+  eq(r2.state.cycleFocusMs, 46 * 60000);
+});
+t('rollover：cycleFocusMs 跨天清零（新一天新轮次）', () => {
+  const s = mkState({ lastActiveDate: '2026-08-25', cycleFocusMs: 12345, tasks: [mkTask('inbox', 'B')] });
+  const r = core.rollover(s, new Date(2026, 7, 26, 9, 0));
+  eq(r.state.cycleFocusMs, 0);
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');

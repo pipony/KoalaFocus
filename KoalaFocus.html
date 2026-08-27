@@ -362,6 +362,10 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     <h3>设置提醒</h3>
     <p id="remind-task-name" style="color:var(--text-2);font-size:13px"></p>
     <div class="minline-form"><label>今天 <select id="remind-hour"></select> 时 <select id="remind-min"></select> 分</label></div>
+    <div class="minline-form" style="padding-top:0;gap:8px">
+      <button class="btn" id="btn-remind-quick5">5分钟后</button>
+      <button class="btn" id="btn-remind-quick10">10分钟后</button>
+    </div>
     <p style="color:var(--text-2);font-size:12px">仅页面打开时提醒；错过的时间在下次打开时补弹。</p>
     <div class="modal-actions">
       <button class="btn" id="btn-remind-clear">清除提醒</button>
@@ -425,6 +429,7 @@ function defaultState(now) {
     lastActiveDate: todayStr(now),
     tasks: [],
     todayFocusMs: 0,
+    cycleFocusMs: 0,   // 批次12：本轮累计聚焦（休息后清零）
     focusSession: null,
     focusLog: [],   // 批次4：今日聚焦起止区间（时间轴用，跨天清零）
     history: [],
@@ -481,6 +486,7 @@ function rollover(state, now) {
   // 4) 重置
   next.todayFocusMs = 0;
   next.focusLog = [];
+  next.cycleFocusMs = 0;   // 批次12：新一天新轮次
   next.lastActiveDate = today;
   return { state: next, changed: true };
 }
@@ -521,17 +527,17 @@ function buildDailySummary(tasks, todayFocusMs, dateStr) {
   s += '正在处理 ' + doing.length + ' 项\n';
   if (done.length) {
     s += '\n今天完成：\n' + done.map(t =>
-      '✓ ' + t.text + (t.subtasks || []).filter(x => x.done).map(x => '\n    ✓ ' + x.text).join('')
-    ).join('\n') + '\n';
+      t.text + (t.subtasks || []).filter(x => x.done).map(x => '\n    ' + x.text).join('')
+    ).join('\n') + '\n';   // 批次12：任务名前不加符号，子任务仅缩进
   }
   const partial = tasks.filter(t => t.zone !== 'done' && (t.subtasks || []).some(x => x.done));   // 批次11：未完成但有已完成子任务
   if (partial.length) {
     s += '\n部分完成：\n' + partial.map(t =>
-      '◐ ' + t.text + (t.subtasks || []).filter(x => x.done).map(x => '\n    ✓ ' + x.text).join('')
+      t.text + (t.subtasks || []).filter(x => x.done).map(x => '\n    ' + x.text).join('')
     ).join('\n') + '\n';
   }
-  if (leftover.length) s += '\n遗留：\n' + leftover.map(t => '→ ' + t.text).join('\n') + '\n';
-  if (doing.length) s += '\n正在处理：\n' + doing.map(t => '→ ' + t.text).join('\n') + '\n';
+  if (leftover.length) s += '\n遗留：\n' + leftover.map(t => t.text).join('\n') + '\n';
+  if (doing.length) s += '\n正在处理：\n' + doing.map(t => t.text).join('\n') + '\n';
   return s.replace(/\n+$/, '');
 }
 
@@ -556,9 +562,10 @@ function settleFocusSession(state, nowMs) {
     next.tasks[idx] = checkMinLine(next.tasks[idx]);
   }
   next.todayFocusMs += sessionMs;
+  next.cycleFocusMs = (next.cycleFocusMs || 0) + sessionMs;   // 批次12：轮次累计（自上次休息），满阈值提醒休息
   next.focusLog = (next.focusLog || []).concat([{ start: next.focusSession.startAt, end: nowMs }]);   // 批次4：记录聚焦区间
   next.focusSession = null;
-  const needRest = sessionMs >= next.settings.focusRemindMin * 60000;
+  const needRest = next.cycleFocusMs >= next.settings.focusRemindMin * 60000;
   return { state: next, sessionMs: sessionMs, needRest: needRest };
 }
 
@@ -605,6 +612,7 @@ function migrate(s) {
   if (!Array.isArray(s.tasks)) s.tasks = [];
   if (!Array.isArray(s.history)) s.history = [];
   if (!Array.isArray(s.focusLog)) s.focusLog = [];   // 批次4：旧数据补时间轴区间字段
+  if (typeof s.cycleFocusMs !== 'number') s.cycleFocusMs = 0;   // 批次12：旧数据补轮次字段
   if (!Array.isArray(s.settings.labels) || !s.settings.labels.length) s.settings.labels = d.settings.labels;
   return s;
 }
@@ -1150,7 +1158,7 @@ const FAV_KOALA = document.querySelector('link[rel="icon"]').href;   // 批次11
 const FAV_FOCUS = 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐨</text><circle cx=%2280%22 cy=%2220%22 r=%2214%22 fill=%22%23EF4444%22 stroke=%22white%22 stroke-width=%224%22/></svg>';
 function setFocusIndicator(on) {
   document.querySelector('link[rel="icon"]').href = on ? FAV_FOCUS : FAV_KOALA;
-  document.title = on ? '◉ 聚焦中 · KoalaFocus' : 'KoalaFocus';
+  document.title = on ? '◉ KoalaFocus' : 'KoalaFocus';   // 批次12：只用符号，不写字样
 }
 
 function applyFont() {   // 批次2：字体/字号（字体仅限本机已安装；字号=整体缩放）
@@ -1299,7 +1307,8 @@ function focusTick() {
   const clock = document.querySelector('.task-card.focused .focus-clock');
   if (clock) {
     clock.textContent = formatDuration(elapsed);
-    clock.style.color = elapsed >= state.settings.focusRemindMin * 60000 ? 'var(--danger)' : '';   // 批次11：达到休息提醒阈值计时变红
+    const cycleNow = (state.cycleFocusMs || 0) + elapsed;   // 批次12：红色阈值按"本轮累计"（自上次休息）而非单会话
+    clock.style.color = cycleNow >= state.settings.focusRemindMin * 60000 ? 'var(--danger)' : '';
   }
 }
 setInterval(focusTick, 1000);
@@ -1340,6 +1349,8 @@ function restCountdownText(leftMs) {
   return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
 }
 function startRest() {
+  state.cycleFocusMs = 0;   // 批次12：休息即清零本轮累计，下一轮重新计满阈值
+  saveState();
   restEndsAt = Date.now() + state.settings.restMin * 60000;
   document.body.classList.add('resting');
   document.getElementById('rest-overlay').classList.add('show');
@@ -1505,6 +1516,16 @@ document.getElementById('btn-remind-save').addEventListener('click', () => {
   save();
   showToast('已设置提醒 ' + hh + ':' + mm);
 });
+[5, 10].forEach(min =>   // 批次12：设置提醒时的快捷选项——以当下为基准 N 分钟后
+  document.getElementById('btn-remind-quick' + min).addEventListener('click', () => {
+    const t = state.tasks.find(x => x.id === remindTaskId);
+    if (!t) { document.getElementById('modal-remind').classList.remove('show'); return; }
+    t.remindAt = Date.now() + min * 60000;
+    t.reminded = false;
+    document.getElementById('modal-remind').classList.remove('show');
+    save();
+    showToast('已设置提醒 ' + fmtTimeHM(t.remindAt) + '（' + min + ' 分钟后）');
+  }));
 document.getElementById('btn-remind-clear').addEventListener('click', () => {
   const t = state.tasks.find(x => x.id === remindTaskId);
   if (t) { t.remindAt = null; t.reminded = false; save(); }
