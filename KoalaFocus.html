@@ -188,6 +188,24 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 #timeline-track { position: relative; height: 30px; border-radius: 8px; background: var(--card-border); overflow: hidden; }
 #timeline-blocks > div { position: absolute; top: 0; height: 100%; background: var(--accent); opacity: .85; border-radius: 4px; }
 #timeline-hours { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-2); margin-top: 4px; font-variant-numeric: tabular-nums; }
+/* 批次13：统计 */
+.stats-range { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.stats-range input[type="date"] { padding: 4px 6px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
+.stats-cards { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.stat-card { flex: 1; min-width: 120px; background: var(--bg); border-radius: 10px; padding: 10px 12px; text-align: center; }
+.stat-card .v { font-size: 17px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.stat-card .k { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+.stats-timelines { max-height: 240px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.stats-tl-row { display: flex; align-items: center; gap: 8px; }
+.stats-tl-row .d { width: 64px; font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stats-tl-track { position: relative; flex: 1; height: 14px; border-radius: 4px; background: var(--card-border); overflow: hidden; }
+.stats-tl-track > div { position: absolute; top: 0; height: 100%; background: var(--accent); opacity: .85; }
+.stats-tl-row .m { width: 66px; font-size: 12px; color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.donut-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.donut-legend { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.donut-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+.donut-legend .pct { color: var(--text-2); margin-left: 4px; }
+#modal-stats h4 { margin: 14px 0 6px; font-size: 13px; color: var(--text-2); }
 </style>
 </head>
 <body>
@@ -234,7 +252,7 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     <div id="zone-donelist"></div>
   </section>
   <section id="view-history" style="display:none">
-    <div class="zone-head"><h2>历史归档</h2><button class="btn danger zone-copy" id="btn-clear-history">清空</button></div>
+    <div class="zone-head"><h2>历史归档</h2><button class="btn zone-copy" id="btn-stats">统计</button><button class="btn danger" id="btn-clear-history">清空</button></div>
     <div id="history-list"></div>
   </section>
 </div>
@@ -392,7 +410,30 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     <div id="timeline-track"><div id="timeline-blocks"></div></div>
     <div id="timeline-hours"></div>
     <p id="timeline-summary" style="color:var(--text-2);font-size:13px;margin-top:10px"></p>
+    <div id="timeline-donut" style="margin-top:6px"></div>
     <div class="modal-actions"><button class="btn primary" id="btn-timeline-close">关闭</button></div>
+  </div>
+</div>
+<div class="modal-backdrop" id="modal-stats">
+  <div class="modal" style="max-width:760px">
+    <h3>聚焦统计</h3>
+    <div class="stats-range">
+      <button class="btn primary" data-range="7">近7天</button>
+      <button class="btn" data-range="30">近30天</button>
+      <button class="btn" data-range="all">全部</button>
+      <button class="btn" data-range="custom">自定义</button>
+      <span id="stats-custom-pick" style="display:none">
+        <input type="date" id="stats-from"> ~ <input type="date" id="stats-to">
+        <button class="btn primary" id="stats-apply">应用</button>
+      </span>
+    </div>
+    <div id="stats-cards" class="stats-cards"></div>
+    <div id="stats-line"></div>
+    <h4>每日时间轴（9:00–22:00）</h4>
+    <div id="stats-timelines" class="stats-timelines"></div>
+    <h4>标签占比（聚焦时长，多标签均摊）</h4>
+    <div id="stats-donut"></div>
+    <div class="modal-actions"><button class="btn primary" id="btn-stats-close">关闭</button></div>
   </div>
 </div>
 <div id="toast" class="toast"></div>
@@ -466,8 +507,8 @@ function rollover(state, now) {
   const doneTasks = next.tasks.filter(t => t.zone === 'done');
   if (doneTasks.length > 0 || archivedFocusMs > 0) {
     const entry = next.history.find(h => h.date === next.lastActiveDate);
-    if (entry) { entry.focusMs += archivedFocusMs; entry.tasks = entry.tasks.concat(doneTasks); }
-    else next.history.unshift({ date: next.lastActiveDate, focusMs: archivedFocusMs, tasks: doneTasks });
+    if (entry) { entry.focusMs += archivedFocusMs; entry.tasks = entry.tasks.concat(doneTasks); entry.focusLog = (entry.focusLog || []).concat(next.focusLog); }
+    else next.history.unshift({ date: next.lastActiveDate, focusMs: archivedFocusMs, tasks: doneTasks, focusLog: next.focusLog });   // 批次13：归档当日聚焦区间（统计时间轴用）
     next.history.sort((a, b) => b.date.localeCompare(a.date));
   }
   // 2) 未完成滚入今日 inbox：清当日字段（含提醒），保留累计 focusMs/标签/子任务
@@ -583,6 +624,44 @@ function layoutTimeline(segments, dayStartMs, startHour, endHour) {   // 批次4
   return out;
 }
 
+function buildStatsDays(state, fromStr, toStr, today) {   // 批次13：统计日列表——历史合并、今天注入、空档补零
+  const hist = {};
+  (state.history || []).forEach(h => { hist[h.date] = h; });
+  const out = [];
+  const d = new Date(fromStr + 'T00:00:00');
+  const end = new Date(toStr + 'T00:00:00');
+  while (d <= end) {
+    const ds = todayStr(d.getTime());
+    if (ds === today) {
+      out.push({ date: ds, focusMs: state.todayFocusMs || 0, tasks: state.tasks || [],
+        focusLog: (state.focusLog || []).slice(), isToday: true });
+    } else {
+      const h = hist[ds];
+      out.push(h ? { date: ds, focusMs: h.focusMs || 0, tasks: h.tasks || [], focusLog: (h.focusLog || []).slice(), isToday: false }
+                 : { date: ds, focusMs: 0, tasks: [], focusLog: [], isToday: false });
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+function labelFocusTotals(days, labels) {   // 批次13：按标签聚合聚焦时长（多标签均摊，无标签单独成桶）
+  const map = {};
+  const none = '无标签';
+  days.forEach(day => (day.tasks || []).forEach(t => {
+    const ms = t.focusMs || 0;
+    if (!ms) return;
+    const ls = (t.labels || []).filter(n => labels.some(l => l.name === n));
+    if (!ls.length) { map[none] = (map[none] || 0) + ms; return; }
+    const share = ms / ls.length;
+    ls.forEach(n => { map[n] = (map[n] || 0) + share; });
+  }));
+  return Object.keys(map).map(n => {
+    const l = labels.find(x => x.name === n);
+    return { name: n, color: l ? l.color : '#94A3B8', ms: Math.round(map[n]) };
+  }).sort((a, b) => b.ms - a.ms);
+}
+
 function labelPriorityOf(task, labels) {
   // 事项有效优先级：无标签=0；有标签取其中最优先（最大）者；标签缺 priority 字段按 0
   const names = task.labels || [];
@@ -597,7 +676,7 @@ function labelPriorityOf(task, labels) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, labelPriorityOf, layoutTimeline };
+  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, labelPriorityOf, layoutTimeline, buildStatsDays, labelFocusTotals };
 }
 /* PURE CORE END */
 
@@ -1687,7 +1766,118 @@ function renderTimeline() {
     (segs.length
       ? '时间轴仅显示 9:00–22:00，界外聚焦段会被裁剪。'
       : '今天还没有聚焦记录——开始一次聚焦并退出后，这里会显示对应时段。');
+  document.getElementById('timeline-donut').innerHTML =   // 批次13：当天标签饼图
+    donutSvg(labelFocusTotals([{ date: '', focusMs: 0, isToday: true, focusLog: [], tasks: state.tasks }], state.settings.labels));
 }
+
+/* ============ 批次13：统计（历史页） ============ */
+function lineSvg(days) {   // 每日聚焦时长折线图（手绘 SVG，点悬停出数值）
+  const W = 700, H = 150, padL = 44, padR = 10, padT = 14, padB = 22;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const maxMin = Math.max(1, ...days.map(d => Math.round(d.focusMs / 60000)));
+  const niceMax = Math.max(30, Math.ceil(maxMin / 30) * 30);
+  const pts = days.map((d, i) => ({
+    x: padL + (days.length === 1 ? iw / 2 : i * iw / (days.length - 1)),
+    y: padT + ih - (d.focusMs / 60000) / niceMax * ih,
+    d: d
+  }));
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%">';
+  s += '<line x1="' + padL + '" y1="' + (padT + ih) + '" x2="' + (W - padR) + '" y2="' + (padT + ih) + '" stroke="var(--card-border)"/>';
+  s += '<text x="' + (padL - 6) + '" y="' + (padT + 4) + '" text-anchor="end" font-size="10" fill="var(--text-2)">' + niceMax + 'm</text>';
+  s += '<text x="' + (padL - 6) + '" y="' + (padT + ih) + '" text-anchor="end" font-size="10" fill="var(--text-2)">0</text>';
+  s += '<polyline fill="none" stroke="var(--accent)" stroke-width="2" points="' + pts.map(p => p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ') + '"/>';
+  const step = Math.max(1, Math.ceil(days.length / 7));
+  pts.forEach((p, i) => {
+    s += '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="3" fill="var(--accent)"><title>' +
+      p.d.date + (p.d.isToday ? '（今天）' : '') + ' · ' + formatDuration(p.d.focusMs) + '</title></circle>';
+    if (i % step === 0 || i === pts.length - 1)
+      s += '<text x="' + p.x.toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="9" fill="var(--text-2)">' + p.d.date.slice(5) + '</text>';
+  });
+  return s + '</svg>';
+}
+
+function donutSvg(totals) {   // 标签占比甜甜圈（中心总时长 + 右侧图例）
+  const total = totals.reduce((a, b) => a + b.ms, 0);
+  if (!total) return '<div class="empty-hint" style="padding:8px 0">暂无聚焦数据</div>';
+  const R = 56, C = 2 * Math.PI * R;
+  let off = 0;
+  let s = '<svg viewBox="0 0 160 160" style="width:150px;height:150px;flex:none">';
+  s += '<circle cx="80" cy="80" r="' + R + '" fill="none" stroke="var(--card-border)" stroke-width="24"/>';
+  totals.forEach(t => {
+    const frac = t.ms / total;
+    s += '<circle cx="80" cy="80" r="' + R + '" fill="none" stroke="' + t.color + '" stroke-width="24"' +
+      ' stroke-dasharray="' + (frac * C).toFixed(2) + ' ' + C.toFixed(2) + '" stroke-dashoffset="' + (-off * C).toFixed(2) + '"' +
+      ' transform="rotate(-90 80 80)"><title>' + escapeHtml(t.name) + ' · ' + formatDuration(t.ms) + ' · ' + Math.round(frac * 100) + '%</title></circle>';
+    off += frac;
+  });
+  s += '<text x="80" y="77" text-anchor="middle" font-size="13" fill="var(--text)">' + formatDuration(total) + '</text>';
+  s += '<text x="80" y="93" text-anchor="middle" font-size="9" fill="var(--text-2)">总聚焦</text></svg>';
+  const legend = '<div class="donut-legend">' + totals.map(t =>
+    '<div><span class="dot" style="background:' + t.color + '"></span>' + escapeHtml(t.name) +
+    ' <b>' + formatDuration(t.ms) + '</b><span class="pct">' + Math.round(t.ms / total * 100) + '%</span></div>').join('') + '</div>';
+  return '<div class="donut-wrap">' + s + legend + '</div>';
+}
+
+let statsRangeMode = '7';
+function statsFromTo() {
+  const to = todayStr(Date.now());
+  if (statsRangeMode === 'all') {
+    const dates = state.history.map(h => h.date).concat([to]).sort();
+    return { from: dates[0] || to, to: to };
+  }
+  if (statsRangeMode === 'custom')
+    return { from: document.getElementById('stats-from').value || to, to: document.getElementById('stats-to').value || to };
+  const d = new Date();
+  d.setDate(d.getDate() - (parseInt(statsRangeMode, 10) - 1));
+  return { from: todayStr(d.getTime()), to: to };
+}
+function renderStats() {
+  const ft = statsFromTo();
+  const days = buildStatsDays(state, ft.from, ft.to, todayStr(Date.now()));
+  const ti = days.findIndex(d => d.isToday);
+  if (ti >= 0 && state.focusSession) {   // 进行中会话实时计入今天
+    days[ti].focusMs += Date.now() - state.focusSession.startAt;
+    days[ti].focusLog = days[ti].focusLog.concat([{ start: state.focusSession.startAt, end: Date.now() }]);
+  }
+  const totalMs = days.reduce((a, d) => a + d.focusMs, 0);
+  const doneCount = days.reduce((a, d) => a + (d.isToday ? d.tasks.filter(t => t.zone === 'done').length : d.tasks.length), 0);
+  const activeDays = days.filter(d => d.focusMs > 0).length || 1;
+  const maxDay = Math.max(0, ...days.map(d => d.focusMs));
+  document.getElementById('stats-cards').innerHTML = [
+    ['总聚焦', formatDuration(totalMs)], ['完成事项', doneCount + ' 项'],
+    ['日均聚焦', formatDuration(Math.round(totalMs / activeDays))], ['最长单日', formatDuration(maxDay)]
+  ].map(c => '<div class="stat-card"><div class="v">' + c[1] + '</div><div class="k">' + c[0] + '</div></div>').join('');
+  document.getElementById('stats-line').innerHTML = days.length > 1 || days[0] ? lineSvg(days) : '';
+  const withData = days.filter(d => d.tasks.length || d.focusMs > 0).slice().reverse();
+  let hasFallback = false;
+  document.getElementById('stats-timelines').innerHTML = withData.length ? withData.map(d => {
+    const dayStart = new Date(d.date + 'T00:00:00').getTime();
+    let inner;
+    if (d.focusLog.length) {
+      inner = layoutTimeline(d.focusLog, dayStart, 9, 22)
+        .map(b => '<div style="left:' + b.leftPct + '%;width:' + b.widthPct + '%"></div>').join('');
+    } else if (d.focusMs > 0) { hasFallback = true; inner = '<div style="left:0;width:100%;opacity:.35"></div>'; }
+    else inner = '';
+    return '<div class="stats-tl-row"><span class="d">' + d.date.slice(5) + (d.isToday ? '（今）' : '') + '</span>' +
+      '<div class="stats-tl-track">' + inner + '</div>' +
+      '<span class="m">' + formatDuration(d.focusMs) + '</span></div>';
+  }).join('') + (hasFallback ? '<div class="empty-hint" style="padding:6px 0">注：更早归档的日子只记录了当日总时长（无时段明细），整条示意。</div>' : '')
+    : '<div class="empty-hint">范围内暂无数据</div>';
+  document.getElementById('stats-donut').innerHTML = donutSvg(labelFocusTotals(days, state.settings.labels));
+}
+document.getElementById('btn-stats').addEventListener('click', () => {
+  renderStats();
+  document.getElementById('modal-stats').classList.add('show');
+});
+document.getElementById('btn-stats-close').addEventListener('click', () =>
+  document.getElementById('modal-stats').classList.remove('show'));
+document.querySelectorAll('#modal-stats [data-range]').forEach(b => b.addEventListener('click', () => {
+  statsRangeMode = b.dataset.range;
+  document.querySelectorAll('#modal-stats [data-range]').forEach(x => x.classList.toggle('primary', x === b));
+  document.getElementById('stats-custom-pick').style.display = b.dataset.range === 'custom' ? '' : 'none';
+  if (b.dataset.range !== 'custom') renderStats();
+}));
+document.getElementById('stats-apply').addEventListener('click', renderStats);
 
 /* ============ 批次4：本机字体文件加载（FontFace，离线可用） ============ */
 const CUSTOM_FONT_NAME = 'KoalaCustomFont';

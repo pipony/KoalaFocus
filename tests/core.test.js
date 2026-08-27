@@ -313,5 +313,38 @@ t('rollover：cycleFocusMs 跨天清零（新一天新轮次）', () => {
   eq(r.state.cycleFocusMs, 0);
 });
 
+// ---- 批次13：统计 ----
+t('rollover：focusLog 归档进对应历史日', () => {
+  const s = mkState({ lastActiveDate: '2026-08-25', focusLog: [{start: 1, end: 2}],
+    tasks: [mkTask('done', 'A', { completedAt: 5 })] });
+  const r = core.rollover(s, new Date(2026, 7, 26, 9, 0));
+  eq(r.state.history[0].focusLog, [{start: 1, end: 2}]);
+  eq(r.state.focusLog, []);
+});
+t('buildStatsDays：历史合并、今天注入、空档补零、范围外排除', () => {
+  const s = mkState({ history: [{ date: '2026-08-24', focusMs: 600000, tasks: [mkTask('done', 'X')], focusLog: [{start: 1, end: 2}] }],
+    tasks: [mkTask('doing', 'T')], todayFocusMs: 300000, focusLog: [{start: 3, end: 4}] });
+  const days = core.buildStatsDays(s, '2026-08-24', '2026-08-26', '2026-08-26');
+  eq(days.length, 3);
+  eq(days[0], { date: '2026-08-24', focusMs: 600000, tasks: s.history[0].tasks, focusLog: [{start:1,end:2}], isToday: false });
+  eq(days[1], { date: '2026-08-25', focusMs: 0, tasks: [], focusLog: [], isToday: false });   // 空档补零
+  eq(days[2].isToday, true);
+  eq(days[2].focusMs, 300000);
+  eq(days[2].tasks, s.tasks);
+  eq(days[2].focusLog, [{start: 3, end: 4}]);
+});
+t('labelFocusTotals：多标签均摊、无标签桶、按时长降序', () => {
+  const labels = [{name:'脚本',color:'#000'},{name:'无脑',color:'#111'}];
+  const days = [{ date: '2026-08-26', focusMs: 0, isToday: true, focusLog: [], tasks: [
+    mkTask('done', 'A', { labels: ['脚本', '无脑'], focusMs: 60000 }),   // 各 30000
+    mkTask('done', 'B', { focusMs: 20000 })                               // 无标签 20000
+  ]}];
+  eq(core.labelFocusTotals(days, labels), [
+    { name: '脚本', color: '#000', ms: 30000 },
+    { name: '无脑', color: '#111', ms: 30000 },
+    { name: '无标签', color: '#94A3B8', ms: 20000 }
+  ]);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
