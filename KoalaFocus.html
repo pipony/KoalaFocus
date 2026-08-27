@@ -122,6 +122,8 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .sub-del { opacity: 0; } .sub-row:hover .sub-del { opacity: 1; }
 .sub-check { width: 14px; height: 14px; accent-color: var(--accent); }
 .sub-text { flex: 1; cursor: text; }
+.hist-day-toggle { cursor: pointer; user-select: none; }
+.hist-day-toggle:hover { color: var(--accent); }
 .label-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .expand-btn { font-size: 12px; }
 .drop-hint { outline: 2px dashed var(--accent); outline-offset: 2px; border-radius: 12px; }
@@ -906,6 +908,7 @@ function startEditTaskText(id) {   // 批次2：就地修改事项文字（Enter
 }
 
 const expandedIds = new Set();
+const collapsedHistoryDays = new Set();   // 批次15：历史归档按日折叠
 
 function refreshCard(id) {
   const t = state.tasks.find(x => x.id === id);
@@ -1166,11 +1169,13 @@ function renderHistory() {
     const d = new Date(day.date + 'T00:00:00');
     const sec = document.createElement('section');
     sec.className = 'zone';
-    sec.innerHTML = '<div class="zone-head"><h2>' + (d.getMonth() + 1) + '月' + d.getDate() + '日</h2>' +
+    sec.innerHTML = '<div class="zone-head"><h2 class="hist-day-toggle" data-date="' + day.date + '" title="点击折叠/展开">' +
+      (collapsedHistoryDays.has(day.date) ? '▸' : '▾') + ' ' + (d.getMonth() + 1) + '月' + d.getDate() + '日</h2>' +
       '<span class="count">聚焦 ' + formatDuration(day.focusMs) + ' · ' + tasks.length + ' 项</span>' +
       '<button class="btn zone-copy" title="复制当日任务名（纯文本）">复制</button></div>';
     sec.querySelector('.zone-copy').addEventListener('click', () =>   // 批次11：历史按日复制，扁平任务名
       copyText(tasks.map(x => x.text).join('\n')).then(ok => showToast(ok ? '已复制 ' + tasks.length + ' 个任务名' : '复制失败')));
+    if (collapsedHistoryDays.has(day.date)) { box.appendChild(sec); return; }   // 批次15：折叠日只留头部
     tasks.forEach(t => {
       const card = buildTaskCard(t);   // zone 为 done → done-item 样式
       card.draggable = false;   // 批次7：历史页未接拖拽，关掉以允许选中复制文字
@@ -1197,6 +1202,14 @@ document.getElementById('btn-clear-history').addEventListener('click', () => {  
   state.history = [];
   save();
   showToast('已清空历史归档');
+});
+
+document.getElementById('history-list').addEventListener('click', e => {   // 批次15：点击日期折叠/展开该日
+  const h = e.target.closest('.hist-day-toggle');
+  if (!h) return;
+  const ds = h.dataset.date;
+  collapsedHistoryDays.has(ds) ? collapsedHistoryDays.delete(ds) : collapsedHistoryDays.add(ds);
+  renderHistory();
 });
 
 function restoreToToday(archivedTask, fromDate) {
