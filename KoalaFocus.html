@@ -568,15 +568,16 @@ function buildDailySummary(tasks, todayFocusMs, dateStr) {
   s += '完成 ' + done.length + ' 项\n';
   s += '遗留 ' + leftover.length + ' 项\n';
   s += '正在处理 ' + doing.length + ' 项\n';
+  const subToday = t => (t.subtasks || []).filter(x => x.done && x.doneAt && todayStr(x.doneAt) === dateStr);   // 批次17：仅当天勾选的子事项
   if (done.length) {
     s += '\n今天完成：\n' + done.map(t =>
-      t.text + (t.subtasks || []).filter(x => x.done).map(x => '\n    ' + x.text).join('')
+      t.text + subToday(t).map(x => '\n    ' + x.text).join('')
     ).join('\n') + '\n';   // 批次12：任务名前不加符号，子任务仅缩进
   }
-  const partial = tasks.filter(t => t.zone !== 'done' && (t.subtasks || []).some(x => x.done));   // 批次11：未完成但有已完成子任务
+  const partial = tasks.filter(t => t.zone !== 'done' && subToday(t).length);   // 批次11/17：未完成且当天有完成子任务
   if (partial.length) {
     s += '\n部分完成：\n' + partial.map(t =>
-      t.text + (t.subtasks || []).filter(x => x.done).map(x => '\n    ' + x.text).join('')
+      t.text + subToday(t).map(x => '\n    ' + x.text).join('')
     ).join('\n') + '\n';
   }
   if (leftover.length) s += '\n遗留：\n' + leftover.map(t => t.text).join('\n') + '\n';
@@ -800,7 +801,7 @@ function zoneTasks(zone) { return state.tasks.filter(t => t.zone === zone); }
 function createTask(text, labels, subtasks) {
   const now = Date.now();
   const t = { id: genId(now), text: text, zone: 'inbox', labels: labels || [],
-    subtasks: (subtasks || []).map(s => ({ id: genId(now), text: s.text, done: !!s.done })),
+    subtasks: (subtasks || []).map(s => ({ id: genId(now), text: s.text, done: !!s.done, doneAt: s.doneAt || null })),
     focusMs: 0, focusMsToday: 0, minLine: null, minLineMet: false, rolledOver: false,
     createdAt: now, completedAt: null };
   state.tasks.push(t);
@@ -978,6 +979,7 @@ function fillSubtaskBox(card, task, readOnly) {
     const s = task.subtasks.find(x => x.id === sid);
     if (s) {
       s.done = e.target.checked;
+      s.doneAt = e.target.checked ? Date.now() : null;   // 批次17：记录勾选时刻，收尾按"当天"过滤
       if (e.target.checked) celebrate('small');   // 批次4：勾选子任务小庆祝
       const ti = state.tasks.indexOf(task);   // 历史归档卡不在 state.tasks（Task 13），跳过回写
       if (ti >= 0) state.tasks[ti] = checkMinLine(task);

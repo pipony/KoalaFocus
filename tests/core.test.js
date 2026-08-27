@@ -155,9 +155,10 @@ t('解析：重复标签去重', () => {
 
 // ---- Task 4 ----
 t('收尾总结完整格式', () => {
+  const T = new Date(2026, 7, 26, 10, 0).getTime();
   const tasks = [
     mkTask('done', 'MySQL 压测', { subtasks: [
-      { id: '1', text: '建表造数', done: true }, { id: '2', text: '跑压测', done: true }] }),
+      { id: '1', text: '建表造数', done: true, doneAt: T }, { id: '2', text: '跑压测', done: true, doneAt: T }] }),
     mkTask('done', '监控脚本'),
     mkTask('inbox', '整理监控结论'),
     mkTask('doing', 'Hermes 排查')
@@ -283,15 +284,20 @@ t('layoutTimeline：区间映射、边界钳制与丢弃零宽', () => {
 });
 
 // ---- 批次11：收尾总结部分完成区块 ----
-t('buildDailySummary：未完成但有已完成子任务的区块', () => {
+t('buildDailySummary：部分完成=当天有完成子事项（昨天勾选的不算）', () => {
+  const T = new Date(2026, 7, 26, 10, 0).getTime();
+  const Y = new Date(2026, 7, 25, 10, 0).getTime();
   const tasks = [
     mkTask('done', 'A'),
-    mkTask('inbox', 'B', { subtasks: [{id:'1',text:'子1',done:true},{id:'2',text:'子2',done:false}] }),
-    mkTask('doing', 'C', { subtasks: [{id:'3',text:'子3',done:true}] }),
-    mkTask('inbox', 'D')
+    mkTask('inbox', 'B', { subtasks: [{id:'1',text:'子1',done:true,doneAt:T},{id:'2',text:'子2',done:false}] }),
+    mkTask('doing', 'C', { subtasks: [{id:'3',text:'子3',done:true,doneAt:T}] }),
+    mkTask('inbox', 'D', { subtasks: [{id:'4',text:'旧的',done:true,doneAt:Y}] }),   // 昨天勾选→不计入
+    mkTask('inbox', 'E')
   ];
   const s = core.buildDailySummary(tasks, 0, '2026-08-26');
   if (!s.includes('\n部分完成：\nB\n    子1\nC\n    子3')) throw new Error('missing partial block: ' + s);
+  if (s.includes('旧的')) throw new Error('昨天勾选的子任务不应出现');
+  if (s.includes('\nD') || s.includes('\nE')) throw new Error('D/E 不应出现在部分完成');
 });
 
 // ---- 批次12：休息提醒轮次累计 ----
