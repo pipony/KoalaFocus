@@ -336,8 +336,9 @@ t('buildStatsDays：历史合并、今天注入、空档补零、范围外排除
 t('labelFocusTotals：多标签均摊、无标签桶、按时长降序', () => {
   const labels = [{name:'脚本',color:'#000'},{name:'无脑',color:'#111'}];
   const days = [{ date: '2026-08-26', focusMs: 0, isToday: true, focusLog: [], tasks: [
-    mkTask('done', 'A', { labels: ['脚本', '无脑'], focusMs: 60000 }),   // 各 30000
-    mkTask('done', 'B', { focusMs: 20000 })                               // 无标签 20000
+    mkTask('done', 'A', { labels: ['脚本', '无脑'], focusMsToday: 60000 }),   // 各 30000
+    mkTask('done', 'B', { focusMsToday: 20000 }),                             // 无标签 20000
+    mkTask('done', 'C', { labels: ['脚本'], focusMs: 999999, focusMsToday: 0 })   // 批次14：仅累计值不算当日
   ]}];
   eq(core.labelFocusTotals(days, labels), [
     { name: '脚本', color: '#000', ms: 30000 },

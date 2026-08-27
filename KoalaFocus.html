@@ -646,10 +646,10 @@ function buildStatsDays(state, fromStr, toStr, today) {   // 批次13：统计�
 }
 
 function labelFocusTotals(days, labels) {   // 批次13：按标签聚合聚焦时长（多标签均摊，无标签单独成桶）
-  const map = {};
+  const map = {};                            // 批次14：用当日字段 focusMsToday——跨天累计(focusMs)不再带入今天/归属日
   const none = '无标签';
   days.forEach(day => (day.tasks || []).forEach(t => {
-    const ms = t.focusMs || 0;
+    const ms = t.focusMsToday || 0;
     if (!ms) return;
     const ls = (t.labels || []).filter(n => labels.some(l => l.name === n));
     if (!ls.length) { map[none] = (map[none] || 0) + ms; return; }
