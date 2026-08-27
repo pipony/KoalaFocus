@@ -282,5 +282,19 @@ t('layoutTimeline：区间映射、边界钳制与丢弃零宽', () => {
   eq(core.layoutTimeline([{start: base + 23*3600000, end: base + 23.5*3600000}], base, 9, 22), []);   // 完全在 22 点后丢弃
 });
 
+// ---- 批次11：收尾总结部分完成区块 ----
+t('buildDailySummary：未完成但有已完成子任务的区块', () => {
+  const tasks = [
+    mkTask('done', 'A'),
+    mkTask('inbox', 'B', { subtasks: [{id:'1',text:'子1',done:true},{id:'2',text:'子2',done:false}] }),
+    mkTask('doing', 'C', { subtasks: [{id:'3',text:'子3',done:true}] }),
+    mkTask('inbox', 'D')
+  ];
+  const s = core.buildDailySummary(tasks, 0, '2026-08-26');
+  if (!s.includes('\n部分完成：\n◐ B\n    ✓ 子1\n◐ C\n    ✓ 子3')) throw new Error('missing partial block: ' + s);
+  if (s.includes('◐ D')) throw new Error('D (无已完成子任务) 不应出现在部分完成');
+  if (s.includes('◐ A')) throw new Error('A (已完成) 不应出现在部分完成');
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

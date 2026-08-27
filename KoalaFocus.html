@@ -121,6 +121,7 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .sub-row .sub-done { color: var(--text-2); text-decoration: line-through; }
 .sub-del { opacity: 0; } .sub-row:hover .sub-del { opacity: 1; }
 .sub-check { width: 14px; height: 14px; accent-color: var(--accent); }
+.sub-text { flex: 1; cursor: text; }
 .label-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .expand-btn { font-size: 12px; }
 .drop-hint { outline: 2px dashed var(--accent); outline-offset: 2px; border-radius: 12px; }
@@ -375,6 +376,8 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     <p id="reminder-fire-text" style="font-size:16px;margin:10px 0"></p>
     <div class="modal-actions" style="justify-content:center">
       <button class="btn primary" id="btn-reminder-start">开始处理</button>
+      <button class="btn" id="btn-reminder-5">5分钟后</button>
+      <button class="btn" id="btn-reminder-10">10分钟后</button>
       <button class="btn" id="btn-reminder-ok">知道了</button>
     </div>
   </div>
@@ -519,6 +522,12 @@ function buildDailySummary(tasks, todayFocusMs, dateStr) {
   if (done.length) {
     s += '\n今天完成：\n' + done.map(t =>
       '✓ ' + t.text + (t.subtasks || []).filter(x => x.done).map(x => '\n    ✓ ' + x.text).join('')
+    ).join('\n') + '\n';
+  }
+  const partial = tasks.filter(t => t.zone !== 'done' && (t.subtasks || []).some(x => x.done));   // 批次11：未完成但有已完成子任务
+  if (partial.length) {
+    s += '\n部分完成：\n' + partial.map(t =>
+      '◐ ' + t.text + (t.subtasks || []).filter(x => x.done).map(x => '\n    ✓ ' + x.text).join('')
     ).join('\n') + '\n';
   }
   if (leftover.length) s += '\n遗留：\n' + leftover.map(t => '→ ' + t.text).join('\n') + '\n';
@@ -770,6 +779,7 @@ function completeTask(id) {
   t.zone = 'done';
   t.completedAt = Date.now();
   t.remindAt = null; t.reminded = false;   // 批次2：完成即清提醒，避免已完成事项到点仍弹窗
+  expandedIds.delete(id);   // 批次11：完成后默认收起
   save();
   celebrate('big');   // 批次4：完成庆祝
 }
@@ -852,7 +862,7 @@ function fillSubtaskBox(card, task, readOnly) {
       return '<div class="sub-row">' +
         '<input type="checkbox" class="sub-check" data-sid="' + s.id + '"' + (s.done ? ' checked' : '') + '>' +
         (href ? '<a class="task-link" target="_blank" rel="noopener" href="' + escapeHtml(href) + '"' + (s.done ? ' style="text-decoration:line-through;color:var(--text-2)"' : '') + '>' + escapeHtml(s.text) + '</a>'
-              : '<span class="' + (s.done ? 'sub-done' : '') + '">' + escapeHtml(s.text) + '</span>') +
+              : '<span class="sub-text' + (s.done ? ' sub-done' : '') + '" data-sid="' + s.id + '" title="点击修改文字">' + escapeHtml(s.text) + '</span>') +
         '<button class="icon-btn sub-del" data-sid="' + s.id + '">✕</button>' +
       '</div>';
     }).join('') +
@@ -887,6 +897,8 @@ function fillSubtaskBox(card, task, readOnly) {
   box.addEventListener('click', e => {
     const del = e.target.closest('.sub-del');
     if (del) { task.subtasks = task.subtasks.filter(x => x.id !== del.dataset.sid); save(); refreshCard(task.id); return; }
+    const subTxt = e.target.closest('.sub-text');
+    if (subTxt) { startSubEdit(task, subTxt.dataset.sid); return; }   // 批次11：点击子任务文字就地编辑
     const chip = e.target.closest('[data-label]');
     if (chip) {
       const name = chip.dataset.label;
@@ -923,6 +935,32 @@ function startNoteEdit(task) {   // 批次5：备注编辑态——失焦保存�
   };
   ta.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') commit(false); });
   ta.addEventListener('blur', () => commit(true));
+}
+
+function startSubEdit(task, sid) {   // 批次11：子任务文字就地编辑（Enter/失焦保存，Esc 取消）
+  const s = (task.subtasks || []).find(x => x.id === sid);
+  const span = document.querySelector('.task-card[data-id="' + task.id + '"] .sub-text[data-sid="' + sid + '"]');
+  if (!s || !span) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'text-edit';
+  input.value = s.text;
+  span.replaceWith(input);
+  input.focus(); input.select();
+  let done = false;
+  const commit = ok => {
+    if (done) return;
+    done = true;
+    const v = input.value.trim();
+    if (ok && v && v !== s.text) { s.text = v; save(); }
+    else refreshCard(task.id);
+  };
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') commit(true);
+    else if (e.key === 'Escape') commit(false);
+  });
+  input.addEventListener('blur', () => commit(true));
 }
 
 function toggleExpand(id, forceOpen) {
@@ -1042,7 +1080,10 @@ function renderHistory() {
     const sec = document.createElement('section');
     sec.className = 'zone';
     sec.innerHTML = '<div class="zone-head"><h2>' + (d.getMonth() + 1) + '月' + d.getDate() + '日</h2>' +
-      '<span class="count">聚焦 ' + formatDuration(day.focusMs) + ' · ' + tasks.length + ' 项</span></div>';
+      '<span class="count">聚焦 ' + formatDuration(day.focusMs) + ' · ' + tasks.length + ' 项</span>' +
+      '<button class="btn zone-copy" title="复制当日任务名（纯文本）">复制</button></div>';
+    sec.querySelector('.zone-copy').addEventListener('click', () =>   // 批次11：历史按日复制，扁平任务名
+      copyText(tasks.map(x => x.text).join('\n')).then(ok => showToast(ok ? '已复制 ' + tasks.length + ' 个任务名' : '复制失败')));
     tasks.forEach(t => {
       const card = buildTaskCard(t);   // zone 为 done → done-item 样式
       card.draggable = false;   // 批次7：历史页未接拖拽，关掉以允许选中复制文字
@@ -1087,6 +1128,7 @@ function restoreToToday(archivedTask, fromDate) {
 
 function showView(name) {
   currentView = name;
+  if (name !== 'today') expandedIds.clear();   // 批次11：完成/历史页默认全部收起
   document.body.dataset.view = name;
   ['today','done','history'].forEach(v => {
     document.getElementById('view-' + v).style.display = v === name ? '' : 'none';
@@ -1104,6 +1146,13 @@ const FONT_ALIASES = {   // 批次3：中文名附带英文别名，本机缺中
   '微软雅黑': 'Microsoft YaHei', '等线': 'DengXian', '黑体': 'SimHei', '宋体': 'SimSun',
   '楷体': 'KaiTi', '苹方': 'PingFang SC', '华文黑体': 'STHeiti', '华文楷体': 'STKaiti'
 };
+const FAV_KOALA = document.querySelector('link[rel="icon"]').href;   // 批次11：聚焦态在标签栏可见（favicon 红点 + 标题前缀）
+const FAV_FOCUS = 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐨</text><circle cx=%2280%22 cy=%2220%22 r=%2214%22 fill=%22%23EF4444%22 stroke=%22white%22 stroke-width=%224%22/></svg>';
+function setFocusIndicator(on) {
+  document.querySelector('link[rel="icon"]').href = on ? FAV_FOCUS : FAV_KOALA;
+  document.title = on ? '◉ 聚焦中 · KoalaFocus' : 'KoalaFocus';
+}
+
 function applyFont() {   // 批次2：字体/字号（字体仅限本机已安装；字号=整体缩放）
   const f = state.settings.fontFamily;
   if (f) {
@@ -1135,6 +1184,7 @@ function moveTask(id, toZone, toIndex) {
   state.tasks = state.tasks.filter(x => x.id !== id);
   t.zone = toZone;
   t.completedAt = toZone === 'done' ? Date.now() : null;
+  if (toZone === 'done') expandedIds.delete(id);   // 批次11：移入完成区默认收起
   const zoneList = state.tasks.filter(x => x.zone === toZone && x.id !== id);
   const idxInState = toIndex == null ? Infinity : toIndex;
   // 重建整表：目标区按新顺序、其余区保持原相对顺序
@@ -1201,6 +1251,7 @@ function startFocus(id) {
   if (!t) return;
   state.focusSession = { taskId: id, startAt: Date.now() };
   saveState();
+  setFocusIndicator(true);   // 批次11：标签栏红点提示聚焦中
   expandedIds.add(id);
   applyFocusUi();
   renderAll();
@@ -1213,7 +1264,8 @@ function exitFocus() {
   state = r.state;
   save();
   applyFocusUi();
-  if (r.needRest) showRestPrompt();   // Task 10 实现，先留空函数
+  setFocusIndicator(false);   // 批次11：解除标签栏聚焦提示
+  if (r.needRest) showRestPrompt();
 }
 
 function applyFocusUi() {
@@ -1245,7 +1297,10 @@ function focusTick() {
   const shown = state.todayFocusMs + elapsed;   // 今日总聚焦实时含进行中会话
   document.getElementById('focus-total').textContent = formatDuration(shown);
   const clock = document.querySelector('.task-card.focused .focus-clock');
-  if (clock) clock.textContent = formatDuration(elapsed);
+  if (clock) {
+    clock.textContent = formatDuration(elapsed);
+    clock.style.color = elapsed >= state.settings.focusRemindMin * 60000 ? 'var(--danger)' : '';   // 批次11：达到休息提醒阈值计时变红
+  }
 }
 setInterval(focusTick, 1000);
 
@@ -1253,6 +1308,7 @@ function ensureFocusUi() {   // 刷新/重开后恢复聚焦态
   if (!state.focusSession) return;
   const t = state.tasks.find(x => x.id === state.focusSession.taskId);
   if (!t) { exitFocus(); return; }
+  setFocusIndicator(true);   // 批次11：刷新后恢复标签栏聚焦提示
   expandedIds.add(t.id);
   applyFocusUi();
   renderAll();   // renderAll 会重建卡片，随后 applyFocusUi 补挂 focus-bar
@@ -1469,6 +1525,14 @@ function checkReminders() {   // 到点弹窗：仅页面打开时有效；错�
 }
 document.getElementById('btn-reminder-ok').addEventListener('click', () =>
   document.getElementById('modal-reminder-fire').classList.remove('show'));
+[5, 10].forEach(min =>   // 批次11：提醒稍后重响
+  document.getElementById('btn-reminder-' + min).addEventListener('click', () => {
+    const txt = document.getElementById('reminder-fire-text').textContent;
+    const t = state.tasks.find(x => x.text === txt && x.reminded);
+    if (t) { t.remindAt = Date.now() + min * 60000; t.reminded = false; save(); }
+    document.getElementById('modal-reminder-fire').classList.remove('show');
+    showToast('已推迟 ' + min + ' 分钟再提醒');
+  }));
 setInterval(checkReminders, 20000);
 
 /* ============ 批次4/5：完成庆祝动画（彩带/烟花/星星/emoji 多样式 + 随机鼓励语） ============ */
