@@ -1098,7 +1098,7 @@ function renderToday() {
     if (card && t) fillSubtaskBox(card, t);
   });
   if (!doing.length) doingBox.innerHTML = '<div class="empty-hint">' +
-    (filtering ? '无匹配事项' : '从 inbox 拖入，最多 ' + state.settings.maxDoing + ' 条') + '</div>';
+    (filtering ? '无匹配事项' : '从 Inbox 拖入，最多 ' + state.settings.maxDoing + ' 条') + '</div>';
   if (!inbox.length) inboxBox.innerHTML = '<div class="empty-hint">' +
     (filtering ? '无匹配事项' : 'Inbox 为空，用下方输入框添加') + '</div>';
 }
