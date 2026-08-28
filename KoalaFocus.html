@@ -1426,7 +1426,8 @@ function ensureFocusUi() {   // 刷新/重开后恢复聚焦态
 function applyBlurTargets() {
   const on = !!state.focusSession;
   document.querySelectorAll('header.topbar, nav.tabs, .toolbar, .task-card, .zone-head, .add-row')
-    .forEach(el => el.classList.toggle('blurable', on && !el.classList.contains('focused')));
+    .forEach(el => el.classList.toggle('blurable',
+      on && !el.classList.contains('focused') && !el.closest('.task-card.focused')));   // 批次18：聚焦卡片内部的子任务添加行不置灰、可交互
 }
 
 /* ============ Task 10: 休息提醒与全屏休息倒计时 ============ */
