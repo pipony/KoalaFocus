@@ -122,6 +122,13 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .sub-del { opacity: 0; } .sub-row:hover .sub-del { opacity: 1; }
 .sub-check { width: 14px; height: 14px; accent-color: var(--accent); }
 .sub-text { flex: 1; cursor: text; }
+.next-sub { font-size: 12px; color: var(--text-2); opacity: .85; cursor: pointer; }   /* 批次19：折叠时的"下一步"子任务 */
+.next-sub:hover { color: var(--accent); }
+.sub-pin { opacity: 0; font-size: 12px; }
+.sub-row:hover .sub-pin { opacity: 1; }
+.sub-pin.pinned { opacity: 1; color: var(--accent); }
+.flash-sub { animation: subFlash 1.6s ease-out; border-radius: 6px; }
+@keyframes subFlash { 0% { background: var(--accent-weak); box-shadow: 0 0 0 2px var(--accent-weak); } 100% { background: transparent; box-shadow: none; } }
 .hist-day-toggle { cursor: pointer; user-select: none; }
 .hist-day-toggle:hover { color: var(--accent); }
 .label-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -833,12 +840,16 @@ function buildTaskCard(task) {
   const labelsHtml = task.labels.map(l =>
     '<span class="tag-badge" style="background:' + escapeHtml(labelColor(l)) + '">' + escapeHtml(l) + '</span>').join('');
   const urlHref = urlHrefOf(task.text);   // 批次4：整体是网址时渲染为可点击链接（file:// 下新标签打开）
+  const nextSub = (task.subtasks || []).find(s => s.pinned && !s.done);   // 批次19："下一步"子任务（折叠时显示在标题旁）
+  const nextHtml = nextSub
+    ? ' <span class="next-sub" data-sid="' + nextSub.id + '" title="下一步：点击展开并定位到该子任务">· ' + escapeHtml(nextSub.text) + '</span>'
+    : '';
   card.innerHTML =
     '<div class="task-row">' +
       '<input type="checkbox" class="task-check" ' + (task.zone === 'done' ? 'checked' : '') + '>' +
       (urlHref
-        ? '<a class="task-link" target="_blank" rel="noopener" href="' + escapeHtml(urlHref) + '">' + escapeHtml(task.text) + '</a>'
-        : '<span class="task-text">' + escapeHtml(task.text) + '</span>') +
+        ? '<a class="task-link" target="_blank" rel="noopener" href="' + escapeHtml(urlHref) + '">' + escapeHtml(task.text) + '</a>' + nextHtml
+        : '<span class="task-text">' + escapeHtml(task.text) + nextHtml + '</span>') +
       '<span class="card-badges">' + labelsHtml +
         (task.subtasks && task.subtasks.length ? '<span class="sub-count">' + doneSubs + '/' + task.subtasks.length + '</span>' : '') +
         (task.minLine ? '<span class="min-dot' + (task.minLineMet ? ' met' : '') + '" title="最低完成线"></span>' : '') +
@@ -938,7 +949,7 @@ function fillSubtaskBox(card, task, readOnly) {
   if (readOnly) {   // 历史归档卡：只读视图（Task 13 裁定：归档不可篡改，仅查看子任务）
     box.innerHTML = (task.subtasks || []).map(s => {
       const href = urlHrefOf(s.text);   // 批次5：归档子任务网址也可直接打开
-      return '<div class="sub-row">' +
+      return '<div class="sub-row" data-sid="' + s.id + '">' +
         (href ? '<a class="task-link" target="_blank" rel="noopener" href="' + escapeHtml(href) + '"' + (s.done ? ' style="text-decoration:line-through;color:var(--text-2)"' : '') + '>' + escapeHtml(s.text) + '</a>'
               : '<span class="' + (s.done ? 'sub-done' : '') + '">' + escapeHtml(s.text) + '</span>') +
       '</div>';
@@ -950,10 +961,11 @@ function fillSubtaskBox(card, task, readOnly) {
     '<div class="note-box">' + noteShowHtml(task) + '</div>' +   // 批次5：备注置顶、回显态、点击才编辑
     (task.subtasks || []).map(s => {
       const href = urlHrefOf(s.text);   // 批次5：子任务是网址时可直接打开
-      return '<div class="sub-row">' +
+      return '<div class="sub-row" data-sid="' + s.id + '">' +
         '<input type="checkbox" class="sub-check" data-sid="' + s.id + '"' + (s.done ? ' checked' : '') + '>' +
         (href ? '<a class="task-link" target="_blank" rel="noopener" href="' + escapeHtml(href) + '"' + (s.done ? ' style="text-decoration:line-through;color:var(--text-2)"' : '') + '>' + escapeHtml(s.text) + '</a>'
               : '<span class="sub-text' + (s.done ? ' sub-done' : '') + '" data-sid="' + s.id + '" title="点击修改文字">' + escapeHtml(s.text) + '</span>') +
+        '<button class="icon-btn sub-pin' + (s.pinned ? ' pinned' : '') + '" data-sid="' + s.id + '" title="设为下一步（显示在任务标题旁）">📌</button>' +
         '<button class="icon-btn sub-del" data-sid="' + s.id + '">✕</button>' +
       '</div>';
     }).join('') +
@@ -987,6 +999,13 @@ function fillSubtaskBox(card, task, readOnly) {
     }
   });
   box.addEventListener('click', e => {
+    const pinBtn = e.target.closest('.sub-pin');   // 批次19：设/取消"下一步"，每任务仅一个
+    if (pinBtn) {
+      const sid = pinBtn.dataset.sid;
+      task.subtasks.forEach(x => { x.pinned = x.id === sid ? !x.pinned : false; });
+      save(); refreshCard(task.id);
+      return;
+    }
     const del = e.target.closest('.sub-del');
     if (del) { task.subtasks = task.subtasks.filter(x => x.id !== del.dataset.sid); save(); refreshCard(task.id); return; }
     const subTxt = e.target.closest('.sub-text');
@@ -1062,6 +1081,19 @@ function toggleExpand(id, forceOpen) {
 }
 
 function dispatchCardAction(e) {
+  const pin = e.target.closest('.next-sub');   // 批次19：点"下一步"→展开并高亮定位对应子任务
+  if (pin) {
+    const id = pin.closest('.task-card').dataset.id;
+    expandedIds.add(id);
+    refreshCard(id);
+    const row = document.querySelector('.task-card[data-id="' + id + '"] .sub-row[data-sid="' + pin.dataset.sid + '"]');
+    if (row) {
+      row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      row.classList.add('flash-sub');
+      setTimeout(() => row.classList.remove('flash-sub'), 1600);
+    }
+    return;
+  }
   const txt = e.target.closest('.task-text');
   if (txt) { toggleExpand(txt.closest('.task-card').dataset.id); return; }
   const btn = e.target.closest('[data-action]');
