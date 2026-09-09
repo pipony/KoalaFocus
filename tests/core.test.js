@@ -259,11 +259,11 @@ t('rollover：提醒字段跨天清空', () => {
 });
 
 // ---- 批次4：focusLog / 时间轴 ----
-t('settleFocusSession：追加今日聚焦区间到 focusLog', () => {
+t('settleFocusSession：追加今日聚焦区间到 focusLog（带 taskId）', () => {
   const task = mkTask('doing', 'A');
   const s = mkState({ tasks: [task], focusSession: { taskId: task.id, startAt: 1000000 }, focusLog: [{start: 5, end: 600000}] });
   const r = core.settleFocusSession(s, 1000000 + 120000);
-  eq(r.state.focusLog, [{start:5,end:600000},{start:1000000,end:1120000}]);
+  eq(r.state.focusLog, [{start:5,end:600000},{start:1000000,end:1120000,taskId:task.id}]);   // 批次20：新段带归属；旧段缺 taskId 原样保留
 });
 t('rollover：focusLog 跨天清空', () => {
   const s = mkState({ lastActiveDate: '2026-08-25', focusLog: [{start:1,end:2}], tasks: [mkTask('inbox','B')] });
@@ -350,6 +350,61 @@ t('labelFocusTotals：多标签均摊、无标签桶、按时长降序', () => {
     { name: '无脑', color: '#111', ms: 30000 },
     { name: '无标签', color: '#94A3B8', ms: 20000 }
   ]);
+});
+
+// ---- 批次20：编辑/删除今日聚焦段 ----
+function mkFocusState(extra) {   // 一个已落库的 60min 聚焦段（10:00–11:00），任务与各计数器同步
+  const task = mkTask('doing', 'A', { focusMs: 3600000, focusMsToday: 3600000 });
+  return Object.assign(mkState({
+    tasks: [task], todayFocusMs: 3600000, cycleFocusMs: 1800000,
+    focusLog: [{ start: 1000000, end: 1000000 + 3600000, taskId: task.id }]
+  }), extra || {});
+}
+t('editTodayFocusSegment：缩短区间同步各计数器与 focusLog', () => {
+  const s = mkFocusState();
+  const r = core.editTodayFocusSegment(s, 0, 1000000, 1000000 + 25 * 60000);   // 60min → 25min
+  eq(r.ok, true);
+  eq(r.state.tasks[0].focusMs, 25 * 60000);
+  eq(r.state.tasks[0].focusMsToday, 25 * 60000);
+  eq(r.state.todayFocusMs, 25 * 60000);
+  eq(r.state.cycleFocusMs, 0);   // 30min - 35min 钳制为 0
+  eq(r.state.focusLog, [{ start: 1000000, end: 1000000 + 25 * 60000, taskId: s.tasks[0].id }]);
+});
+t('editTodayFocusSegment：删除段全额扣减并移除区间', () => {
+  const s = mkFocusState();
+  const r = core.editTodayFocusSegment(s, 0, null, null);
+  eq(r.ok, true);
+  eq(r.state.tasks[0].focusMs, 0);
+  eq(r.state.tasks[0].focusMsToday, 0);
+  eq(r.state.todayFocusMs, 0);
+  eq(r.state.cycleFocusMs, 0);   // 30min - 60min 钳制为 0
+  eq(r.state.focusLog, []);
+});
+t('editTodayFocusSegment：非法区间/越界下标拒绝且不动状态', () => {
+  const s = mkFocusState();
+  eq(core.editTodayFocusSegment(s, 0, 1000000 + 50 * 60000, 1000000 + 10 * 60000).ok, false);   // end <= start
+  eq(core.editTodayFocusSegment(s, 5, 1000000, 1000000 + 60000).ok, false);                     // 下标越界
+  const r = core.editTodayFocusSegment(s, 0, 1000000 + 50 * 60000, 1000000 + 10 * 60000);
+  eq(JSON.stringify(r.state), JSON.stringify(s));   // 拒绝时返回原状态
+});
+t('editTodayFocusSegment：最低完成线重评估（虚增撑绿可退回）', () => {
+  const task = mkTask('doing', 'A', { focusMs: 3600000, focusMsToday: 3600000,
+    minLine: { type: 'focus', minutes: 30 }, minLineMet: true });
+  const s = mkState({ tasks: [task], todayFocusMs: 3600000, cycleFocusMs: 0,
+    focusLog: [{ start: 1000000, end: 1000000 + 3600000, taskId: task.id }] });
+  const r = core.editTodayFocusSegment(s, 0, 1000000, 1000000 + 20 * 60000);   // 60→20min，低于 30min 完成线
+  eq(r.state.tasks[0].minLineMet, false);
+  eq(core.editTodayFocusSegment(s, 0, 1000000, 1000000 + 35 * 60000).state.tasks[0].minLineMet, true);   // 仍达标保持绿
+});
+t('editTodayFocusSegment：段无归属（旧数据）只调今日总量不动任务', () => {
+  const task = mkTask('doing', 'A', { focusMs: 3600000, focusMsToday: 3600000 });
+  const s = mkState({ tasks: [task], todayFocusMs: 3600000,
+    focusLog: [{ start: 1000000, end: 1000000 + 3600000 }] });   // 无 taskId
+  const r = core.editTodayFocusSegment(s, 0, null, null);
+  eq(r.ok, true);
+  eq(r.state.todayFocusMs, 0);
+  eq(r.state.tasks[0].focusMs, 3600000);   // 任务计数不动（归属未知，不可乱扣）
+  eq(r.state.focusLog, []);
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');

@@ -215,6 +215,14 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .donut-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
 .donut-legend .pct { color: var(--text-2); margin-left: 4px; }
 #modal-stats h4 { margin: 14px 0 6px; font-size: 13px; color: var(--text-2); }
+/* 批次20：聚焦段管理 */
+.fl-open { cursor: pointer; }
+.fl-open:hover { color: var(--accent); }
+.fl-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px dashed var(--card-border); font-variant-numeric: tabular-nums; }
+.fl-row:last-child { border-bottom: none; }
+.fl-row .fl-range { flex: 1; font-size: 14px; }
+.fl-row input[type="time"] { padding: 5px 6px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
+.fl-subhead { margin: 12px 0 2px; font-size: 13px; color: var(--text-2); }
 </style>
 </head>
 <body>
@@ -445,6 +453,15 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     <div class="modal-actions"><button class="btn primary" id="btn-stats-close">关闭</button></div>
   </div>
 </div>
+<div class="modal-backdrop" id="modal-focuslog">
+  <div class="modal">
+    <h3>今日聚焦记录</h3>
+    <p id="fl-task-name" style="color:var(--text-2);font-size:13px;margin:0 0 6px"></p>
+    <div id="fl-list"></div>
+    <p style="color:var(--text-2);font-size:12px;margin-top:10px">忘记取消聚焦导致的虚增时段，可在此修改起止时间或删除；今日总时长、任务累计与最低完成线会同步修正。</p>
+    <div class="modal-actions"><button class="btn primary" id="btn-fl-close">关闭</button></div>
+  </div>
+</div>
 <div id="toast" class="toast"></div>
 <script>
 /* PURE CORE START */
@@ -614,10 +631,32 @@ function settleFocusSession(state, nowMs) {
   }
   next.todayFocusMs += sessionMs;
   next.cycleFocusMs = (next.cycleFocusMs || 0) + sessionMs;   // 批次12：轮次累计（自上次休息），满阈值提醒休息
-  next.focusLog = (next.focusLog || []).concat([{ start: next.focusSession.startAt, end: nowMs }]);   // 批次4：记录聚焦区间
+  next.focusLog = (next.focusLog || []).concat([{ start: next.focusSession.startAt, end: nowMs, taskId: next.focusSession.taskId }]);   // 批次4：记录聚焦区间；批次20：带任务归属（旧段缺 taskId 原样保留）
   next.focusSession = null;
   const needRest = next.cycleFocusMs >= next.settings.focusRemindMin * 60000;
   return { state: next, sessionMs: sessionMs, needRest: needRest };
+}
+
+function editTodayFocusSegment(state, index, newStart, newEnd) {   // 批次20：修正/删除今日某聚焦段（newStart/newEnd 传 null 即删除）
+  const seg = (state.focusLog || [])[index];
+  if (!seg) return { state: state, ok: false };
+  const del = newStart == null && newEnd == null;
+  if (!del && !(typeof newStart === 'number' && typeof newEnd === 'number' && newEnd > newStart))
+    return { state: state, ok: false };   // 非法区间拒绝且不动状态
+  const next = deepClone(state);
+  const delta = (del ? 0 : (newEnd - newStart)) - Math.max(0, seg.end - seg.start);
+  const ti = next.tasks.findIndex(t => t.id === seg.taskId);   // 无归属（旧数据）则只调今日总量，不乱扣任务
+  if (ti >= 0) {
+    next.tasks[ti].focusMs = Math.max(0, next.tasks[ti].focusMs + delta);
+    next.tasks[ti].focusMsToday = Math.max(0, next.tasks[ti].focusMsToday + delta);
+    if (next.tasks[ti].minLine && next.tasks[ti].minLine.type === 'focus')   // 虚增撑绿的完成线可退回
+      next.tasks[ti].minLineMet = next.tasks[ti].focusMsToday >= next.tasks[ti].minLine.minutes * 60000;
+  }
+  next.todayFocusMs = Math.max(0, next.todayFocusMs + delta);
+  next.cycleFocusMs = Math.max(0, (next.cycleFocusMs || 0) + delta);
+  if (del) next.focusLog.splice(index, 1);
+  else next.focusLog[index] = { start: newStart, end: newEnd, taskId: seg.taskId };
+  return { state: next, ok: true };
 }
 
 function layoutTimeline(segments, dayStartMs, startHour, endHour) {   // 批次4：聚焦区间 → 时间轴百分比块（边界外钳制，零宽丢弃）
@@ -686,7 +725,7 @@ function labelPriorityOf(task, labels) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, labelPriorityOf, layoutTimeline, buildStatsDays, labelFocusTotals };
+  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, editTodayFocusSegment, labelPriorityOf, layoutTimeline, buildStatsDays, labelFocusTotals };
 }
 /* PURE CORE END */
 
@@ -853,7 +892,7 @@ function buildTaskCard(task) {
       '<span class="card-badges">' + labelsHtml +
         (task.subtasks && task.subtasks.length ? '<span class="sub-count">' + doneSubs + '/' + task.subtasks.length + '</span>' : '') +
         (task.minLine ? '<span class="min-dot' + (task.minLineMet ? ' met' : '') + '" title="最低完成线"></span>' : '') +
-        (task.focusMs > 0 ? '<span class="focus-badge" title="累计聚焦">⏱ ' + formatDuration(task.focusMs) + '</span>' : '') +
+        (task.focusMs > 0 ? '<span class="focus-badge fl-open" title="累计聚焦（点击管理今日聚焦段）">⏱ ' + formatDuration(task.focusMs) + '</span>' : '') +
         (task.remindAt && !task.reminded ? '<span class="remind-badge" title="提醒时间">⏰ ' + fmtTimeHM(task.remindAt) + '</span>' : '') +
       '</span>' +
       (task.subtasks && task.subtasks.length
@@ -1081,6 +1120,8 @@ function toggleExpand(id, forceOpen) {
 }
 
 function dispatchCardAction(e) {
+  const flb = e.target.closest('.fl-open');   // 批次20：点 ⏱ 徽标 → 管理今日聚焦段
+  if (flb) { openFocusLogDialog(flb.closest('.task-card').dataset.id); return; }
   const pin = e.target.closest('.next-sub');   // 批次19：点"下一步"→展开并高亮定位对应子任务
   if (pin) {
     const id = pin.closest('.task-card').dataset.id;
@@ -1822,6 +1863,92 @@ function renderTimeline() {
   document.getElementById('timeline-donut').innerHTML =   // 批次13：当天标签饼图
     donutSvg(labelFocusTotals([{ date: '', focusMs: 0, isToday: true, focusLog: [], tasks: state.tasks }], state.settings.labels));
 }
+
+/* ============ 批次20：今日聚焦段管理（点任务卡 ⏱ 徽标打开） ============ */
+let flTaskId = null, flEditing = -1;
+function openFocusLogDialog(id) {
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) { showToast('历史归档只读，仅今日任务可修正'); return; }
+  flTaskId = id; flEditing = -1;
+  document.getElementById('fl-task-name').textContent = t.text;
+  renderFocusLogList();
+  document.getElementById('modal-focuslog').classList.add('show');
+}
+function renderFocusLogList() {
+  const mine = [], unattr = [];
+  (state.focusLog || []).forEach((seg, idx) => {
+    if (seg.taskId === flTaskId) mine.push({ seg: seg, idx: idx });
+    else if (!seg.taskId) unattr.push({ seg: seg, idx: idx });   // 旧版落库的段无归属
+  });
+  let html = mine.length ? mine.map(flRowHtml).join('')
+    : '<div class="empty-hint" style="padding:10px 0">今天该任务还没有已结束的聚焦段</div>';
+  if (unattr.length)
+    html += '<div class="fl-subhead">今日未归属时段（升级前记录，确认属于本任务的请先归入）</div>' +
+      unattr.map(r =>
+        '<div class="fl-row"><span class="fl-range">' + fmtTimeHM(r.seg.start) + '–' + fmtTimeHM(r.seg.end) +
+        ' · ' + formatDuration(r.seg.end - r.seg.start) + '</span>' +
+        '<button class="btn" data-flclaim="' + r.idx + '">归入此任务</button></div>').join('');
+  document.getElementById('fl-list').innerHTML = html;
+}
+function flRowHtml(r) {
+  if (flEditing === r.idx) {
+    return '<div class="fl-row">' +
+      '<input type="time" class="fl-start" value="' + fmtTimeHM(r.seg.start) + '"> <span>–</span> ' +
+      '<input type="time" class="fl-end" value="' + fmtTimeHM(r.seg.end) + '">' +
+      '<button class="btn primary" data-flsave="' + r.idx + '">保存</button>' +
+      '<button class="btn" data-flcancel="1">取消</button></div>';
+  }
+  return '<div class="fl-row"><span class="fl-range">' + fmtTimeHM(r.seg.start) + '–' + fmtTimeHM(r.seg.end) +
+    ' · ' + formatDuration(r.seg.end - r.seg.start) + '</span>' +
+    '<button class="icon-btn" data-fledit="' + r.idx + '" title="修改起止时间">✎</button>' +
+    '<button class="icon-btn" data-fldel="' + r.idx + '" title="删除该时段">✕</button></div>';
+}
+function flTimeToMs(baseMs, hm) {   // 时间输入 HH:MM → 以该段所在日的毫秒时刻
+  const p = String(hm || '').split(':');
+  if (p.length !== 2) return NaN;
+  const d = new Date(baseMs);
+  d.setHours(parseInt(p[0], 10), parseInt(p[1], 10), 0, 0);
+  return d.getTime();
+}
+document.getElementById('fl-list').addEventListener('click', e => {
+  const editBtn = e.target.closest('[data-fledit]');
+  if (editBtn) { flEditing = parseInt(editBtn.dataset.fledit, 10); renderFocusLogList(); return; }
+  if (e.target.closest('[data-flcancel]')) { flEditing = -1; renderFocusLogList(); return; }
+  const claim = e.target.closest('[data-flclaim]');
+  if (claim) {   // 归入只补归属不动计数——时长本就记在当时真正聚焦的任务上
+    state.focusLog[parseInt(claim.dataset.flclaim, 10)].taskId = flTaskId;
+    save(); renderFocusLogList(); showToast('已归入，现在可修正该时段');
+    return;
+  }
+  const del = e.target.closest('[data-fldel]');
+  if (del) {
+    const idx = parseInt(del.dataset.fldel, 10);
+    const seg = state.focusLog[idx];
+    if (!seg) return;
+    if (!window.confirm('删除聚焦段 ' + fmtTimeHM(seg.start) + '–' + fmtTimeHM(seg.end) +
+        '（' + formatDuration(seg.end - seg.start) + '）？今日总时长与任务累计将同步扣减。')) return;
+    const r = editTodayFocusSegment(state, idx, null, null);
+    if (!r.ok) return;
+    state = r.state; flEditing = -1;
+    save(); renderFocusLogList(); showToast('已删除该时段');
+    return;
+  }
+  const saveBtn = e.target.closest('[data-flsave]');
+  if (saveBtn) {
+    const idx = parseInt(saveBtn.dataset.flsave, 10);
+    const base = state.focusLog[idx] ? state.focusLog[idx].start : 0;
+    const row = saveBtn.closest('.fl-row');
+    const ns = flTimeToMs(base, row.querySelector('.fl-start').value);
+    const ne = flTimeToMs(base, row.querySelector('.fl-end').value);
+    if (isNaN(ns) || isNaN(ne)) { showToast('请选择起止时间'); return; }
+    const r = editTodayFocusSegment(state, idx, ns, ne);
+    if (!r.ok) { showToast('结束时间需晚于开始时间'); return; }
+    state = r.state; flEditing = -1;
+    save(); renderFocusLogList(); showToast('已修正');
+  }
+});
+document.getElementById('btn-fl-close').addEventListener('click', () =>
+  document.getElementById('modal-focuslog').classList.remove('show'));
 
 /* ============ 批次13：统计（历史页） ============ */
 function lineSvg(days) {   // 每日聚焦时长折线图（手绘 SVG，点悬停出数值）
