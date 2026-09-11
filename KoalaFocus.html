@@ -227,6 +227,13 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .fl-row .fl-range { flex: 1; font-size: 14px; }
 .fl-row input[type="time"] { padding: 5px 6px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
 .fl-subhead { margin: 12px 0 2px; font-size: 13px; color: var(--text-2); }
+/* 批次23：更新日志弹窗（点左上角品牌名打开） */
+#brand { cursor: pointer; }
+.cl-scroll { max-height: 60vh; overflow: auto; padding-right: 8px; }
+.cl-date { font-weight: 700; font-size: 14px; color: var(--accent); margin: 16px 0 4px; }
+.cl-scroll .cl-date:first-child { margin-top: 0; }
+.cl-list { margin: 0; padding-left: 20px; }
+.cl-list li { font-size: 14px; line-height: 1.65; margin: 3px 0; }
 </style>
 </head>
 <body>
@@ -464,6 +471,13 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     <div id="fl-list"></div>
     <p style="color:var(--text-2);font-size:12px;margin-top:10px">忘记取消聚焦导致的虚增时段，可在此修改起止时间或删除；今日总时长、任务累计与最低完成线会同步修正。</p>
     <div class="modal-actions"><button class="btn primary" id="btn-fl-close">关闭</button></div>
+  </div>
+</div>
+<div class="modal-backdrop" id="modal-changelog">   <!-- 批次23：更新日志（点左上角品牌名打开） -->
+  <div class="modal" style="max-width:680px">
+    <h3>🐨 KoalaFocus 更新日志</h3>
+    <div class="cl-scroll" id="cl-body"></div>
+    <div class="modal-actions"><button class="btn primary" id="btn-cl-close">关闭</button></div>
   </div>
 </div>
 <div id="toast" class="toast"></div>
@@ -2353,6 +2367,59 @@ function renderSettings() {
 document.getElementById('btn-settings').addEventListener('click', () => {
   renderSettings(); document.getElementById('modal-settings').classList.add('show');
 });
+
+/* ============ 批次23：更新日志 ============ */
+const CHANGELOG = [   // 批次23：新→旧；以后每次 push 前在此追加最新改动并经确认
+  { date: '2026-09-11', items: [
+    '已完成子任务可折叠：点卡片上的计数徽标（如 1/3）切换显示/隐藏，折叠状态按任务记忆、刷新保持，历史归档同样适用',
+    '任务卡新增存在天数与距上次操作天数：显示在 ⏱ 用时右边（📅 N天(N天)），已完成的任务定格在完成那天，≥3 天无操作括号变红',
+    '新增更新日志：点左上角 KoalaFocus 名称即可查看历次功能改动'
+  ] },
+  { date: '2026-09-09', items: [
+    '今日聚焦记录可修正：点任务卡 ⏱ 徽标查看今日各时段，可修改起止时间或删除虚增时段，任务累计、今日总量与最低完成线同步修正'
+  ] },
+  { date: '2026-08-30', items: [
+    '子任务可设为下一步（📌）：卡片收起时标题旁淡灰小字显示，点击展开并高亮定位到该子任务'
+  ] },
+  { date: '2026-08-29', items: [
+    '修复：聚焦中也能添加子任务（此前输入被毛玻璃层挡住）'
+  ] },
+  { date: '2026-08-28', items: [
+    '历史归档：点击日期折叠/展开该日，标题一键全部展开/折叠',
+    '收尾总结的「部分完成」只计入当天勾选的子任务',
+    '修复：标签饼图改用当日聚焦时长，昨日滚入事项不再把累计时长带进今天',
+    '空态提示等文案微调'
+  ] },
+  { date: '2026-08-27', items: [
+    '新增统计：概览数字卡、每日聚焦折线图、每日时间轴、标签占比环形图',
+    '新增备注功能（回显置顶、点击编辑）；任务与子任务中的网址可直接点击打开',
+    '完成庆祝动画（烟花/星星/emoji 多样式）',
+    '提醒增强：可稍后 5/10 分钟、设置时快捷选 5/10 分钟后、触发后清徽标',
+    '聚焦增强：标签页红点与标题标记、计时超阈值变红、休息提醒按轮次累计',
+    '子任务点击文字就地编辑；收尾总结新增「部分完成」区块',
+    '历史归档一键清空（带确认）；进度条分档配色',
+    '支持加载字体文件（重启自动恢复）；修复拖拽卡片时无法选中文字等问题'
+  ] },
+  { date: '2026-08-26（初版）', items: [
+    '应用诞生：单文件离线待办 + 专注工具，定名 KoalaFocus',
+    '三区流转（正在处理 / Inbox / 已完成）+ 历史归档，卡片拖拽排序',
+    '任务：添加/完成/删除/就地编辑、标签（颜色/优先级/排序/筛选）、搜索、批量添加、定时提醒',
+    '子任务：展开、增删、勾选',
+    '聚焦模式：毛玻璃隔离、计时、休息提醒、退出结算',
+    '最低完成线、每日固定事项、跨天自动结转',
+    '今日收尾总结、导出/导入、自动备份、设置页、快捷键'
+  ] }
+];
+document.getElementById('brand').title = '点击查看更新日志';
+document.getElementById('brand').addEventListener('click', () => {   // 批次23：点品牌名打开更新日志
+  document.getElementById('cl-body').innerHTML = CHANGELOG.map(g =>
+    '<div class="cl-date">' + escapeHtml(g.date) + '</div>' +
+    '<ul class="cl-list">' + g.items.map(i => '<li>' + escapeHtml(i) + '</li>').join('') + '</ul>'
+  ).join('');
+  document.getElementById('modal-changelog').classList.add('show');
+});
+document.getElementById('btn-cl-close').addEventListener('click', () =>
+  document.getElementById('modal-changelog').classList.remove('show'));
 document.getElementById('btn-settings-close').addEventListener('click', () =>
   document.getElementById('modal-settings').classList.remove('show'));
 document.getElementById('btn-label-add').addEventListener('click', () => {
