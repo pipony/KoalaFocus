@@ -407,5 +407,36 @@ t('editTodayFocusSegment：段无归属（旧数据）只调今日总量不动�
   eq(r.state.focusLog, []);
 });
 
+// ---- 批次21：已完成子任务折叠 ----
+t('visibleSubs 展开时返回全部且保持原顺序', () => {
+  const subs = [{ id: 'a', text: 'A', done: true }, { id: 'b', text: 'B', done: false },
+                { id: 'c', text: 'C', done: true }];
+  const r = core.visibleSubs(subs, false);
+  eq(r.rows.map(s => s.id), ['a', 'b', 'c']);   // 交错顺序不重排
+  eq(r.doneCount, 2);
+});
+t('visibleSubs 折叠时只留未完成，已完成计数正确', () => {
+  const subs = [{ id: 'a', text: 'A', done: true }, { id: 'b', text: 'B', done: false },
+                { id: 'c', text: 'C', done: true }];
+  const r = core.visibleSubs(subs, true);
+  eq(r.rows.map(s => s.id), ['b']);
+  eq(r.doneCount, 2);
+});
+t('visibleSubs 全部完成且折叠 → 行空、计数=全部', () => {
+  const subs = [{ id: 'a', text: 'A', done: true }, { id: 'c', text: 'C', done: true }];
+  const r = core.visibleSubs(subs, true);
+  eq(r.rows, []);
+  eq(r.doneCount, 2);
+});
+t('visibleSubs 无已完成时折叠与展开等价', () => {
+  const subs = [{ id: 'b', text: 'B', done: false }];
+  eq(core.visibleSubs(subs, true).rows.length, 1);
+  eq(core.visibleSubs(subs, true).doneCount, 0);
+});
+t('visibleSubs 子任务缺失（null/undefined）容错', () => {
+  eq(core.visibleSubs(undefined, true), { rows: [], doneCount: 0 });
+  eq(core.visibleSubs(null, false), { rows: [], doneCount: 0 });
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

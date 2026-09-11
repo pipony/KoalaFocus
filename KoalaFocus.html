@@ -78,7 +78,8 @@ section.zone { margin-bottom: 18px; }
 .task-card.done-item .task-text { color: var(--text-2); text-decoration: line-through; }
 .card-badges { display: flex; align-items: center; gap: 6px; }
 .tag-badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; color: #fff; border: 1px solid rgba(255,255,255,.25); }   /* 深色模式下深底徽章（如「深度」#1E293B）白描边保可读，浅色下近无感 */
-.sub-count { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.sub-count { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; cursor: pointer; padding: 1px 5px; border-radius: 8px; }   /* 批次21：计数徽标可点击折叠/展开已完成子任务 */
+.sub-count.folded { background: var(--accent-weak); color: var(--accent); }   /* 批次21：折叠态——淡色背景块 */
 .min-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
 .min-dot.met { background: var(--ok); }
 .icon-btn {
@@ -724,8 +725,14 @@ function labelPriorityOf(task, labels) {
   return best === null ? 0 : best;
 }
 
+function visibleSubs(subtasks, collapsed) {   // 批次21：已完成子任务折叠——折叠时只返回未完成行，展开时原顺序全量
+  const subs = subtasks || [];
+  return { rows: collapsed ? subs.filter(s => !s.done) : subs,
+           doneCount: subs.filter(s => s.done).length };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, editTodayFocusSegment, labelPriorityOf, layoutTimeline, buildStatsDays, labelFocusTotals };
+  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, editTodayFocusSegment, labelPriorityOf, layoutTimeline, buildStatsDays, labelFocusTotals, visibleSubs };
 }
 /* PURE CORE END */
 
@@ -890,7 +897,10 @@ function buildTaskCard(task) {
         ? '<a class="task-link" target="_blank" rel="noopener" href="' + escapeHtml(urlHref) + '">' + escapeHtml(task.text) + '</a>' + nextHtml
         : '<span class="task-text">' + escapeHtml(task.text) + nextHtml + '</span>') +
       '<span class="card-badges">' + labelsHtml +
-        (task.subtasks && task.subtasks.length ? '<span class="sub-count">' + doneSubs + '/' + task.subtasks.length + '</span>' : '') +
+        (task.subtasks && task.subtasks.length   // 批次21：计数徽标兼作已完成子任务折叠开关；折叠背景块仅在卡片展开时显示（收起时一律纯文本，避免观感不一致）
+          ? '<span class="sub-count' + (task.doneSubsCollapsed && doneSubs && expandedIds.has(task.id) ? ' folded' : '') + '" title="' +
+            (task.doneSubsCollapsed ? '已完成子任务已折叠，点击展开' : '点击折叠已完成子任务') + '">' +
+            doneSubs + '/' + task.subtasks.length + '</span>' : '') +
         (task.minLine ? '<span class="min-dot' + (task.minLineMet ? ' met' : '') + '" title="最低完成线"></span>' : '') +
         (task.focusMs > 0 ? '<span class="focus-badge fl-open" title="累计聚焦（点击管理今日聚焦段）">⏱ ' + formatDuration(task.focusMs) + '</span>' : '') +
         (task.remindAt && !task.reminded ? '<span class="remind-badge" title="提醒时间">⏰ ' + fmtTimeHM(task.remindAt) + '</span>' : '') +
@@ -986,7 +996,8 @@ function fillSubtaskBox(card, task, readOnly) {
     document.addEventListener('mousedown', rearm);
   });
   if (readOnly) {   // 历史归档卡：只读视图（Task 13 裁定：归档不可篡改，仅查看子任务）
-    box.innerHTML = (task.subtasks || []).map(s => {
+    const view = visibleSubs(task.subtasks, task.doneSubsCollapsed);   // 批次21：折叠时隐藏已完成行（开关在卡片计数徽标）
+    box.innerHTML = view.rows.map(s => {
       const href = urlHrefOf(s.text);   // 批次5：归档子任务网址也可直接打开
       return '<div class="sub-row" data-sid="' + s.id + '">' +
         (href ? '<a class="task-link" target="_blank" rel="noopener" href="' + escapeHtml(href) + '"' + (s.done ? ' style="text-decoration:line-through;color:var(--text-2)"' : '') + '>' + escapeHtml(s.text) + '</a>'
@@ -996,9 +1007,10 @@ function fillSubtaskBox(card, task, readOnly) {
       (task.note ? '<div class="note-readonly">📝 ' + escapeHtml(task.note) + '</div>' : '');
     return;
   }
+  const view = visibleSubs(task.subtasks, task.doneSubsCollapsed);   // 批次21：折叠时隐藏已完成行（开关在卡片计数徽标）
   box.innerHTML =
     '<div class="note-box">' + noteShowHtml(task) + '</div>' +   // 批次5：备注置顶、回显态、点击才编辑
-    (task.subtasks || []).map(s => {
+    view.rows.map(s => {
       const href = urlHrefOf(s.text);   // 批次5：子任务是网址时可直接打开
       return '<div class="sub-row" data-sid="' + s.id + '">' +
         '<input type="checkbox" class="sub-check" data-sid="' + s.id + '"' + (s.done ? ' checked' : '') + '>' +
@@ -1119,9 +1131,25 @@ function toggleExpand(id, forceOpen) {
   refreshCard(id);
 }
 
+function findTaskAnywhere(id) {   // 批次21：跨今日任务与历史归档找任务对象（计数徽标折叠开关两处都要改标记）
+  const t = state.tasks.find(x => x.id === id);
+  if (t) return t;
+  let hit = null;
+  state.history.forEach(h => (h.tasks || []).forEach(x => { if (x.id === id) hit = x; }));
+  return hit;
+}
+
 function dispatchCardAction(e) {
   const flb = e.target.closest('.fl-open');   // 批次20：点 ⏱ 徽标 → 管理今日聚焦段
   if (flb) { openFocusLogDialog(flb.closest('.task-card').dataset.id); return; }
+  const sc = e.target.closest('.sub-count');   // 批次21：点计数徽标 → 折叠/展开已完成子任务（今日/完成区/归档统一）
+  if (sc) {
+    const id = sc.closest('.task-card').dataset.id;
+    const t = findTaskAnywhere(id);
+    if (t) { t.doneSubsCollapsed = !t.doneSubsCollapsed; save(); }
+    refreshCard(id);   // 归档/完成区卡在 refreshCard 内部转 renderAll
+    return;
+  }
   const pin = e.target.closest('.next-sub');   // 批次19：点"下一步"→展开并高亮定位对应子任务
   if (pin) {
     const id = pin.closest('.task-card').dataset.id;
@@ -1298,6 +1326,7 @@ function restoreToToday(archivedTask, fromDate) {
   clone.id = genId(now);
   clone.zone = 'inbox';
   clone.subtasks = (clone.subtasks || []).map(s => ({ id: genId(now), text: s.text, done: false }));
+  clone.doneSubsCollapsed = false;   // 批次21：恢复后子任务全部未完成，折叠标记重置为默认展开
   clone.focusMs = 0; clone.focusMsToday = 0;
   clone.minLine = null; clone.minLineMet = false;
   clone.rolledOver = false; clone.createdAt = now; clone.completedAt = null;
