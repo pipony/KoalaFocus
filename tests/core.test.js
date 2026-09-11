@@ -438,5 +438,33 @@ t('visibleSubs 子任务缺失（null/undefined）容错', () => {
   eq(core.visibleSubs(null, false), { rows: [], doneCount: 0 });
 });
 
+// ---- 批次22：存在天数 / 距上次操作天数 ----
+t('dayGap 本地日历日差：同日=0、跨午夜=1、多日累计', () => {
+  eq(core.dayGap(new Date(2026, 8, 11, 23, 59).getTime(), new Date(2026, 8, 11, 0, 1).getTime()), 0);   // 同一天（时刻乱序无妨）
+  eq(core.dayGap(new Date(2026, 8, 11, 23, 59).getTime(), new Date(2026, 8, 12, 0, 1).getTime()), 1);   // 跨午夜
+  eq(core.dayGap(new Date(2026, 8, 9).getTime(), new Date(2026, 8, 12).getTime()), 3);
+  eq(core.dayGap(new Date(2026, 7, 31).getTime(), new Date(2026, 8, 1).getTime()), 1);                  // 跨月
+});
+t('taskAgeDays 未完成按今天算，当天创建=0', () => {
+  const now = new Date(2026, 8, 12, 10, 0).getTime();
+  eq(core.taskAgeDays(mkTask('inbox', 'A', { createdAt: now }), now), 0);
+  eq(core.taskAgeDays(mkTask('inbox', 'A', { createdAt: new Date(2026, 8, 9, 8, 0).getTime() }), now), 3);
+});
+t('taskAgeDays 已完成定格在完成日，不再随今天增长', () => {
+  const now = new Date(2026, 8, 12, 10, 0).getTime();
+  const t = mkTask('done', 'A', { createdAt: new Date(2026, 8, 2).getTime(), completedAt: new Date(2026, 8, 7).getTime() });
+  eq(core.taskAgeDays(t, now), 5);   // 完成那天是第5天，今天已第10天但不更新
+});
+t('taskStaleDays 按上次操作算，今天操作过=0', () => {
+  const now = new Date(2026, 8, 12, 10, 0).getTime();
+  eq(core.taskStaleDays(mkTask('inbox', 'A', { createdAt: 1, lastOpAt: now }), now), 0);
+  eq(core.taskStaleDays(mkTask('inbox', 'A', { createdAt: 1, lastOpAt: new Date(2026, 8, 9, 20, 0).getTime() }), now), 3);
+});
+t('taskStaleDays 无记录回退创建时间；未来时刻钳为0', () => {
+  const now = new Date(2026, 8, 12, 10, 0).getTime();
+  eq(core.taskStaleDays(mkTask('inbox', 'A', { createdAt: new Date(2026, 8, 10).getTime() }), now), 2);
+  eq(core.taskStaleDays(mkTask('inbox', 'A', { createdAt: 1, lastOpAt: now + 60000 }), now), 0);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

@@ -171,6 +171,9 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .date-week { margin-left: 4px; }
 .text-edit { flex: 1; min-width: 0; font: inherit; padding: 2px 6px; border: 1px solid var(--accent); border-radius: 6px; background: var(--card); color: var(--text); }
 .focus-badge { font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.age-badge { font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }   /* 批次22：存在天数（完成定格） */
+.stale-badge { font-size: 11px; color: var(--text-2); font-variant-numeric: tabular-nums; }   /* 批次22：距上次操作天数 */
+.stale-badge.warn { color: var(--danger); }   /* 批次22：≥3天无操作警示色 */
 .remind-badge { font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; }
 .lbl-prio { width: 54px; padding: 6px 6px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
 .settings-row select { padding: 5px 8px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
@@ -731,8 +734,23 @@ function visibleSubs(subtasks, collapsed) {   // 批次21：已完成子任务�
            doneCount: subs.filter(s => s.done).length };
 }
 
+function dayGap(fromMs, toMs) {   // 批次22：本地日历日差（只比日期，不看时刻；跨午夜即+1）
+  const a = new Date(todayStr(fromMs) + 'T00:00:00').getTime();
+  const b = new Date(todayStr(toMs) + 'T00:00:00').getTime();
+  return Math.round((b - a) / 86400000);
+}
+
+function taskAgeDays(task, nowMs) {   // 批次22：存在天数——未完成按今天算；已完成定格在完成日
+  const anchor = task.zone === 'done' && task.completedAt ? task.completedAt : nowMs;
+  return Math.max(0, dayGap(task.createdAt, anchor));
+}
+
+function taskStaleDays(task, nowMs) {   // 批次22：距上次操作天数——无记录回退创建时间
+  return Math.max(0, dayGap(task.lastOpAt || task.createdAt, nowMs));
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, editTodayFocusSegment, labelPriorityOf, layoutTimeline, buildStatsDays, labelFocusTotals, visibleSubs };
+  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, editTodayFocusSegment, labelPriorityOf, layoutTimeline, buildStatsDays, labelFocusTotals, visibleSubs, dayGap, taskAgeDays, taskStaleDays };
 }
 /* PURE CORE END */
 
@@ -856,7 +874,7 @@ function createTask(text, labels, subtasks) {
   const t = { id: genId(now), text: text, zone: 'inbox', labels: labels || [],
     subtasks: (subtasks || []).map(s => ({ id: genId(now), text: s.text, done: !!s.done, doneAt: s.doneAt || null })),
     focusMs: 0, focusMsToday: 0, minLine: null, minLineMet: false, rolledOver: false,
-    createdAt: now, completedAt: null };
+    createdAt: now, lastOpAt: now, completedAt: null };   // 批次22：lastOpAt=距上次操作天数的锚点，创建即初始化
   state.tasks.push(t);
   return t;
 }
@@ -890,6 +908,9 @@ function buildTaskCard(task) {
   const nextHtml = nextSub
     ? ' <span class="next-sub" data-sid="' + nextSub.id + '" title="下一步：点击展开并定位到该子任务">· ' + escapeHtml(nextSub.text) + '</span>'
     : '';
+  const nowMs = Date.now();   // 批次22：存在天数（≥1天才显示；完成定格）与距上次操作天数（未完成且≥1天才显示）
+  const ageDays = taskAgeDays(task, nowMs);
+  const staleDays = task.zone !== 'done' ? taskStaleDays(task, nowMs) : -1;
   card.innerHTML =
     '<div class="task-row">' +
       '<input type="checkbox" class="task-check" ' + (task.zone === 'done' ? 'checked' : '') + '>' +
@@ -903,6 +924,9 @@ function buildTaskCard(task) {
             doneSubs + '/' + task.subtasks.length + '</span>' : '') +
         (task.minLine ? '<span class="min-dot' + (task.minLineMet ? ' met' : '') + '" title="最低完成线"></span>' : '') +
         (task.focusMs > 0 ? '<span class="focus-badge fl-open" title="累计聚焦（点击管理今日聚焦段）">⏱ ' + formatDuration(task.focusMs) + '</span>' : '') +
+        (ageDays >= 1 ? '<span class="age-badge" title="' + (task.zone === 'done' ? '存在天数（完成时定格）' : '任务存在天数（自创建）') + '">📅 ' + ageDays + '天' +
+          (staleDays >= 0 ? '<span class="stale-badge' + (staleDays >= 3 ? ' warn' : '') + '" title="距上次操作（子任务/备注/聚焦）' + staleDays + ' 天">(' + staleDays + '天)</span>' : '') +
+          '</span>' : '') +   // 批次22：存在天数，距上次操作以括号内嵌其后（≥3天红色）
         (task.remindAt && !task.reminded ? '<span class="remind-badge" title="提醒时间">⏰ ' + fmtTimeHM(task.remindAt) + '</span>' : '') +
       '</span>' +
       (task.subtasks && task.subtasks.length
@@ -1032,6 +1056,7 @@ function fillSubtaskBox(card, task, readOnly) {
     const text = e.target.value.trim();
     if (!text) return;
     task.subtasks.push({ id: genId(), text: text, done: false });
+    task.lastOpAt = Date.now();   // 批次22：子任务添加计入"上次操作"
     save(); refreshCard(task.id);
     const again = document.querySelector('.task-card[data-id="' + task.id + '"] .sub-input');
     if (again) again.focus();
@@ -1044,6 +1069,7 @@ function fillSubtaskBox(card, task, readOnly) {
       s.done = e.target.checked;
       s.doneAt = e.target.checked ? Date.now() : null;   // 批次17：记录勾选时刻，收尾按"当天"过滤
       if (e.target.checked) celebrate('small');   // 批次4：勾选子任务小庆祝
+      task.lastOpAt = Date.now();   // 批次22：勾选/取消勾选计入"上次操作"
       const ti = state.tasks.indexOf(task);   // 历史归档卡不在 state.tasks（Task 13），跳过回写
       if (ti >= 0) state.tasks[ti] = checkMinLine(task);
       save(); refreshCard(task.id);
@@ -1054,11 +1080,12 @@ function fillSubtaskBox(card, task, readOnly) {
     if (pinBtn) {
       const sid = pinBtn.dataset.sid;
       task.subtasks.forEach(x => { x.pinned = x.id === sid ? !x.pinned : false; });
+      task.lastOpAt = Date.now();   // 批次22：置顶切换计入"上次操作"
       save(); refreshCard(task.id);
       return;
     }
     const del = e.target.closest('.sub-del');
-    if (del) { task.subtasks = task.subtasks.filter(x => x.id !== del.dataset.sid); save(); refreshCard(task.id); return; }
+    if (del) { task.subtasks = task.subtasks.filter(x => x.id !== del.dataset.sid); task.lastOpAt = Date.now(); save(); refreshCard(task.id); return; }   // 批次22：删除计入"上次操作"
     const subTxt = e.target.closest('.sub-text');
     if (subTxt) { startSubEdit(task, subTxt.dataset.sid); return; }   // 批次11：点击子任务文字就地编辑
     const chip = e.target.closest('[data-label]');
@@ -1092,7 +1119,7 @@ function startNoteEdit(task) {   // 批次5：备注编辑态——失焦保存�
   const commit = ok => {
     if (done) return;
     done = true;
-    if (ok) { task.note = ta.value.trim(); save(); }
+    if (ok) { task.note = ta.value.trim(); task.lastOpAt = Date.now(); save(); }   // 批次22：备注保存计入"上次操作"
     else refreshCard(task.id);
   };
   ta.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') commit(false); });
@@ -1114,7 +1141,7 @@ function startSubEdit(task, sid) {   // 批次11：子任务文字就地编辑�
     if (done) return;
     done = true;
     const v = input.value.trim();
-    if (ok && v && v !== s.text) { s.text = v; save(); }
+    if (ok && v && v !== s.text) { s.text = v; task.lastOpAt = Date.now(); save(); }   // 批次22：子任务改字计入"上次操作"
     else refreshCard(task.id);
   };
   input.addEventListener('keydown', e => {
@@ -1330,6 +1357,7 @@ function restoreToToday(archivedTask, fromDate) {
   clone.focusMs = 0; clone.focusMsToday = 0;
   clone.minLine = null; clone.minLineMet = false;
   clone.rolledOver = false; clone.createdAt = now; clone.completedAt = null;
+  clone.lastOpAt = now;   // 批次22：恢复后当作新任务，存在天数与距上次操作天数归零
   state.tasks.push(clone);
   save();
   showToast('已恢复到今日 inbox' + (fromDate ? '（来自 ' + fromDate + '）' : ''));
@@ -1458,6 +1486,7 @@ function startFocus(id) {
   if (state.focusSession) { showToast('已在聚焦中，先退出当前聚焦'); return; }
   const t = state.tasks.find(x => x.id === id);
   if (!t) return;
+  t.lastOpAt = Date.now();   // 批次22：聚焦计时计入"上次操作"
   state.focusSession = { taskId: id, startAt: Date.now() };
   saveState();
   setFocusIndicator(true);   // 批次11：标签栏红点提示聚焦中
@@ -1469,8 +1498,11 @@ function startFocus(id) {
 
 function exitFocus() {
   if (!state.focusSession) return;
+  const fid = state.focusSession.taskId;   // 批次22：结算后 focusSession 已清空，先记下任务号
   const r = settleFocusSession(state, Date.now());
   state = r.state;
+  const ft = state.tasks.find(x => x.id === fid);   // 批次22：聚焦退出计入"上次操作"（settle 是深拷贝，须改新对象）
+  if (ft) ft.lastOpAt = Date.now();
   save();
   applyFocusUi();
   setFocusIndicator(false);   // 批次11：解除标签栏聚焦提示
