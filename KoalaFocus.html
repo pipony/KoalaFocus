@@ -31,7 +31,7 @@ body {
 #app { max-width: 860px; margin: 0 auto; padding: 16px 20px 80px; }
 header.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 #date-label { font-size: 17px; font-weight: 600; margin-right: auto; }
-.focus-total { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+.focus-total { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; cursor: pointer; }   /* 批次25：点击打开时间块规划与聚焦时间轴 */
 .progress-wrap { width: 100%; display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .progress-track { flex: 1; height: 8px; border-radius: 4px; background: var(--card-border); overflow: hidden; }
 #progress-bar { height: 100%; width: 0; background: var(--accent); border-radius: 4px; transition: width .25s, background .25s; }
@@ -69,6 +69,7 @@ section.zone { margin-bottom: 18px; }
   background: var(--card); border: 1px solid var(--card-border); border-radius: 12px;
   box-shadow: var(--shadow); padding: 10px 12px; margin-bottom: 8px;
   transition: transform .15s, border-color .15s, filter .3s, opacity .3s;
+  position: relative;
 }
 .task-card:hover { transform: translateY(-1px); }
 .task-card.doing { border-left: 3px solid var(--accent); }
@@ -118,7 +119,8 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .task-card:hover .card-actions, .task-card.focused .card-actions { opacity: 1; }
 .task-check { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
 .subtask-box { margin-top: 8px; padding-left: 24px; }
-.sub-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 14px; }
+.sub-row { display: flex; align-items: center; gap: 8px; padding: 2px 5px; margin: 0 -5px; border-radius: 6px; font-size: 14px; }   /* 批次24：负 margin 抵消内边距，hover 整行高亮对齐右侧按钮 */
+.sub-row:hover { background: var(--accent-weak); }
 .sub-row .sub-done { color: var(--text-2); text-decoration: line-through; }
 .sub-del { opacity: 0; } .sub-row:hover .sub-del { opacity: 1; }
 .sub-check { width: 14px; height: 14px; accent-color: var(--accent); }
@@ -199,7 +201,8 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 @keyframes cheerPop { from { transform: translateX(-50%) scale(.5); opacity: 0; } }
 @keyframes cheerFade { to { opacity: 0; transform: translateX(-50%) translateY(-18px); } }
 #timeline-track { position: relative; height: 30px; border-radius: 8px; background: var(--card-border); overflow: hidden; }
-#timeline-blocks > div { position: absolute; top: 0; height: 100%; background: var(--accent); opacity: .85; border-radius: 4px; }
+#timeline-blocks > div { position: absolute; top: 0; height: 100%; background: var(--accent); opacity: .85; border-radius: 4px; display: flex; align-items: center; overflow: hidden; }   /* 批次24：块内可显示任务名 */
+#timeline-blocks > div > span { font-size: 10px; color: #fff; font-weight: 600; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #timeline-hours { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-2); margin-top: 4px; font-variant-numeric: tabular-nums; }
 /* 批次13：统计 */
 .stats-range { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
@@ -234,6 +237,66 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .cl-scroll .cl-date:first-child { margin-top: 0; }
 .cl-list { margin: 0; padding-left: 20px; }
 .cl-list li { font-size: 14px; line-height: 1.65; margin: 3px 0; }
+/* 批次24：任务枯萎（≥3天未操作，未完成卡未展开也生效；聚焦中的卡保持清晰不受影响） */
+.task-card.overgrown { filter: saturate(.28) sepia(.6); }
+.task-card.overgrown::after {
+  content: '🌿'; position: absolute; top: -8px; right: 8px; font-size: 16px;
+  pointer-events: none; opacity: .95; transform: rotate(-8deg);
+}
+/* 批次24：时间块规划 */
+.task-card.block-now { border-color: var(--ok); box-shadow: 0 0 0 3px rgba(16,185,129,.22), var(--shadow); }
+.block-badge { display: inline-block; font-size: 11px; color: var(--accent); background: var(--accent-weak); border-radius: 6px; padding: 1px 7px; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+.tl-cell {
+  border: 1px solid var(--card-border); border-radius: 8px; min-height: 54px; padding: 3px 2px;
+  display: flex; flex-direction: column; gap: 2px; background: var(--card);
+  transition: border-color .15s, background .15s, box-shadow .15s; overflow: hidden;
+}
+.tl-cell.now { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-weak); }
+.tl-cell.over { border-color: var(--accent); background: var(--accent-weak); }
+.tl-cell .h { font-size: 10px; color: var(--text-2); text-align: center; font-variant-numeric: tabular-nums; }
+.tl-chip {
+  display: flex; align-items: center; gap: 2px; font-size: 10px; line-height: 1.25;
+  color: #fff; border-radius: 5px; padding: 1px 2px 1px 4px; cursor: default; min-width: 0;
+}
+.tl-chip .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-chip .x { border: none; background: transparent; color: rgba(255,255,255,.85); cursor: pointer; font-size: 10px; padding: 0 2px; font-family: inherit; flex: none; }
+#tl-plan-tasks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.tl-pool-chip {
+  border: 1px solid var(--card-border); background: var(--card); border-radius: 999px;
+  font-size: 12px; padding: 3px 10px; cursor: grab; color: var(--text); font-family: inherit;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tl-pool-chip:hover { border-color: var(--accent); }
+.tl-pool-chip.dragging { opacity: .45; }
+.tl-pool-chip .at { color: var(--accent); }
+/* 批次24/25/26：加强聚焦（任务+指定子任务：子任务居中放大为主角，任务名小字灰色挪到右下角） */
+.task-card.deep-focus { display: flex; flex-direction: column; transform: scale(1.15); }
+.task-card.deep-focus .subtask-box { order: 1; flex: 1; display: flex; align-items: center; justify-content: center; padding: 30px 0; }
+.task-card.deep-focus .sub-row { font-size: 26px; font-weight: 600; justify-content: center; }
+.task-card.deep-focus .sub-text, .task-card.deep-focus .sub-row .task-link { flex: none; text-align: center; }
+.task-card.deep-focus .focus-bar { order: 2; }
+.task-card.deep-focus .task-row { order: 3; justify-content: flex-end; margin-top: 10px; }   /* 任务名：底部右侧 */
+.task-card.deep-focus .task-text, .task-card.deep-focus .task-link { flex: none; font-size: 13px; font-weight: 400; color: var(--text-2); }
+.task-card.deep-focus .sub-row:not(.deep-target) { display: none; }   /* 批次25：只留 🎯 选中的那行子任务 */
+.task-card.deep-focus .card-badges, .task-card.deep-focus .card-actions, .task-card.deep-focus .expand-btn,
+.task-card.deep-focus .task-check, .task-card.deep-focus .block-badge, .task-card.deep-focus .note-box,
+.task-card.deep-focus .label-picker, .task-card.deep-focus .add-row, .task-card.deep-focus .next-sub,
+.task-card.deep-focus .sub-check, .task-card.deep-focus .sub-pin, .task-card.deep-focus .sub-del,
+.task-card.deep-focus .sub-focus { display: none; }
+.deep-exit { margin-left: 10px; }   /* 批次26：与「取消聚焦」留一点间距 */
+.sub-focus { opacity: 0; }   /* 批次25：子任务行 🎯（悬停显示，同 📌/✕） */
+.sub-row:hover .sub-focus { opacity: 1; }
+/* 批次24：专注热力图（顺序色阶：亮度单调，深色模式独立色阶；悬停 tooltip 提供精确值） */
+:root { --heat-0: #EBEDF0; --heat-1: #9BE9A8; --heat-2: #40C463; --heat-3: #30A14E; --heat-4: #216E39; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --heat-0: #161B22; --heat-1: #0E4429; --heat-2: #006D32; --heat-3: #26A641; --heat-4: #39D353; }
+}
+:root[data-theme="dark"] { --heat-0: #161B22; --heat-1: #0E4429; --heat-2: #006D32; --heat-3: #26A641; --heat-4: #39D353; }
+#stats-heat { overflow-x: auto; padding-bottom: 4px; }
+.heat-legend { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-2); margin-top: 4px; }
+.heat-legend i { width: 11px; height: 11px; border-radius: 2.5px; display: inline-block; }
+/* 批次24：复合标签 chip（虚线边框区分，排在普通标签前） */
+.chip.composite { border-style: dashed; }
 </style>
 </head>
 <body>
@@ -241,7 +304,7 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
   <header class="topbar">
     <span id="brand">🐨 KoalaFocus</span>
     <span id="date-label"></span>
-    <span class="focus-total">⏱ 今日聚焦 <span id="focus-total">0min</span></span>
+    <span class="focus-total" title="点击查看时间块规划与今日聚焦时间轴">⏱ 今日聚焦 <span id="focus-total">0min</span></span>
     <button class="btn" id="btn-theme" title="切换主题">🌓</button>
     <button class="btn" id="btn-summary">今日收尾</button>
     <button class="btn" id="btn-export">导出/导入</button>
@@ -360,6 +423,9 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     <h4>标签</h4>
     <div id="settings-labels"></div>
     <div style="margin-top:6px"><button class="btn" id="btn-label-add">＋ 新增标签</button></div>
+    <h4 style="margin-top:14px">复合标签 <span style="font-size:12px;color:var(--text-2)">（多个标签的集合，仅用于筛选，不能直接贴给任务）</span></h4>
+    <div id="settings-composites"></div>
+    <div style="margin-top:6px"><button class="btn" id="btn-composite-add">＋ 新增复合标签</button></div>
     <h4 style="margin-top:18px">每日固定事项 <span style="font-size:12px;color:var(--text-2)">（每天自动加入 inbox）</span></h4>
     <div id="settings-daily"></div>
     <div style="margin-top:6px"><button class="btn" id="btn-daily-add">＋ 新增固定事项</button></div>
@@ -435,6 +501,10 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 <div class="modal-backdrop" id="modal-timeline">
   <div class="modal" style="max-width:640px">
     <h3>今日聚焦时间轴（9:00–22:00）</h3>
+    <div class="fl-subhead" style="margin-top:0">时间块规划 <span style="font-weight:400">（拖下方未完成任务到格子，明天自动清空）</span></div>
+    <div id="tl-plan-cells" style="display:grid;grid-template-columns:repeat(13,1fr);gap:3px"></div>
+    <div id="tl-plan-tasks"></div>
+    <div class="fl-subhead">聚焦记录</div>
     <div id="timeline-track"><div id="timeline-blocks"></div></div>
     <div id="timeline-hours"></div>
     <p id="timeline-summary" style="color:var(--text-2);font-size:13px;margin-top:10px"></p>
@@ -457,6 +527,8 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
     </div>
     <div id="stats-cards" class="stats-cards"></div>
     <div id="stats-line"></div>
+    <h4>专注热力图（全部历史）</h4>
+    <div id="stats-heat"></div>
     <h4>每日时间轴（9:00–22:00）</h4>
     <div id="stats-timelines" class="stats-timelines"></div>
     <h4>标签占比（聚焦时长，多标签均摊）</h4>
@@ -528,6 +600,7 @@ function defaultState(now) {
         { name: '深度', color: '#1E293B' },   { name: '沟通', color: '#EC4899' }
       ],
       dailyFixed: [],
+      compositeLabels: [],   // 批次24：复合标签（仅筛选用，不挂在任务上）
       maxDoing: 2,
       focusRemindMin: 45,
       restMin: 5,
@@ -558,7 +631,7 @@ function rollover(state, now) {
   // 2) 未完成滚入今日 inbox：清当日字段（含提醒），保留累计 focusMs/标签/子任务
   next.tasks = next.tasks.filter(t => t.zone !== 'done').map(t => Object.assign({}, t, {
     zone: 'inbox', rolledOver: true, focusMsToday: 0, minLine: null, minLineMet: false,
-    completedAt: null, remindAt: null, reminded: false
+    completedAt: null, remindAt: null, reminded: false, timeBlocks: []   // 批次24/25：时间块仅当天生效，跨天清空（一任务可多块）
   }));
   // 3) 注入每日固定事项（与今日已有事项按文本去重）
   next.settings.dailyFixed.forEach(f => {
@@ -645,6 +718,7 @@ function settleFocusSession(state, nowMs) {
   if (idx >= 0) {
     next.tasks[idx].focusMs += sessionMs;
     next.tasks[idx].focusMsToday += sessionMs;
+    next.tasks[idx].lastOpAt = nowMs;   // 批次25：只有真正累计聚焦时长才刷新"上次操作"（改子任务等不算）
     next.tasks[idx] = checkMinLine(next.tasks[idx]);
   }
   next.todayFocusMs += sessionMs;
@@ -686,7 +760,7 @@ function layoutTimeline(segments, dayStartMs, startHour, endHour) {   // 批次4
     const b = Math.min(s.end, viewStart + spanMs);
     if (b - a <= 0) return;
     out.push({ leftPct: Math.round((a - viewStart) / spanMs * 10000) / 100,
-               widthPct: Math.round((b - a) / spanMs * 10000) / 100 });
+               widthPct: Math.round((b - a) / spanMs * 10000) / 100, seg: s });   // 批次24：带原区间引用（时间轴渲染任务名）
   });
   return out;
 }
@@ -754,17 +828,40 @@ function dayGap(fromMs, toMs) {   // 批次22：本地日历日差（只比日�
   return Math.round((b - a) / 86400000);
 }
 
+function workdayGap(fromMs, toMs) {   // 批次25：工作日差（跳过周六日）——未处理天数周末不计
+  const a = new Date(todayStr(fromMs) + 'T00:00:00').getTime();
+  const b = new Date(todayStr(toMs) + 'T00:00:00').getTime();
+  if (b <= a) return 0;
+  const d = new Date(a);
+  let n = 0;
+  for (d.setDate(d.getDate() + 1); d.getTime() <= b; d.setDate(d.getDate() + 1))
+    if (d.getDay() !== 0 && d.getDay() !== 6) n++;
+  return n;
+}
+
 function taskAgeDays(task, nowMs) {   // 批次22：存在天数——未完成按今天算；已完成定格在完成日
   const anchor = task.zone === 'done' && task.completedAt ? task.completedAt : nowMs;
   return Math.max(0, dayGap(task.createdAt, anchor));
 }
 
-function taskStaleDays(task, nowMs) {   // 批次22：距上次操作天数——无记录回退创建时间
-  return Math.max(0, dayGap(task.lastOpAt || task.createdAt, nowMs));
+function taskStaleDays(task, nowMs) {   // 批次22/25：距上次操作的工作日差——周末不计；无记录回退创建时间
+  return Math.max(0, workdayGap(task.lastOpAt || task.createdAt, nowMs));
+}
+
+function expandFilterGroups(names, composites) {   // 批次25：每个筛选项一组（复合=成员集合，排序去重）——组间 AND、组内 ANY
+  return (names || []).map(n => {
+    const c = (composites || []).find(x => x.name === n);
+    return c ? [...new Set(c.members || [])].sort() : [n];
+  });
+}
+
+function heatLevel(ms, maxMs) {   // 批次24：热力图色阶——0=无记录；其余按最大日四分位取 1-4
+  if (!ms || ms <= 0) return 0;
+  return Math.min(4, Math.max(1, Math.ceil(ms / maxMs * 4)));
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, editTodayFocusSegment, labelPriorityOf, layoutTimeline, buildStatsDays, labelFocusTotals, visibleSubs, dayGap, taskAgeDays, taskStaleDays };
+  module.exports = { deepClone, todayStr, formatDuration, genId, computeProgress, defaultState, rollover, formatTasksAsText, parseBulkText, buildDailySummary, checkMinLine, settleFocusSession, editTodayFocusSegment, labelPriorityOf, layoutTimeline, buildStatsDays, labelFocusTotals, visibleSubs, dayGap, workdayGap, taskAgeDays, taskStaleDays, expandFilterGroups, heatLevel };
 }
 /* PURE CORE END */
 
@@ -781,6 +878,10 @@ function migrate(s) {
   if (!Array.isArray(s.focusLog)) s.focusLog = [];   // 批次4：旧数据补时间轴区间字段
   if (typeof s.cycleFocusMs !== 'number') s.cycleFocusMs = 0;   // 批次12：旧数据补轮次字段
   if (!Array.isArray(s.settings.labels) || !s.settings.labels.length) s.settings.labels = d.settings.labels;
+  s.tasks.concat(...s.history.map(h => h.tasks || [])).forEach(t => {   // 批次25：单数 timeBlock → 复数数组
+    if (!Array.isArray(t.timeBlocks)) t.timeBlocks = typeof t.timeBlock === 'number' ? [t.timeBlock] : [];
+    delete t.timeBlock;
+  });
   return s;
 }
 function loadState() {
@@ -838,10 +939,23 @@ function renderTopbar() {
   document.getElementById('progress-text').textContent = p.done + '/' + p.total + '（' + p.pct + '%）';
 }
 function renderChips() {
-  const valid = new Set(state.settings.labels.map(l => l.name));
+  const composites = state.settings.compositeLabels || [];
+  const valid = new Set(state.settings.labels.map(l => l.name).concat(composites.map(c => c.name)));
   [...activeLabels].forEach(n => { if (!valid.has(n)) activeLabels.delete(n); });
   const box = document.getElementById('label-chips');
   box.innerHTML = '';
+  composites.forEach(c => {   // 批次24：复合标签排在普通标签前，虚线边框区分；点选=同时筛全部成员
+    const b = document.createElement('button');
+    b.className = 'chip composite' + (activeLabels.has(c.name) ? ' on' : '');
+    b.textContent = c.name;
+    b.title = '复合标签：' + (c.members || []).join(' ＋ ');
+    if (activeLabels.has(c.name)) b.style.background = c.color;
+    b.onclick = () => {
+      activeLabels.has(c.name) ? activeLabels.delete(c.name) : activeLabels.add(c.name);
+      renderAll();
+    };
+    box.appendChild(b);
+  });
   state.settings.labels.forEach(l => {
     const b = document.createElement('button');
     b.className = 'chip' + (activeLabels.has(l.name) ? ' on' : '');
@@ -855,12 +969,16 @@ function renderChips() {
   });
 }
 const activeLabels = new Set();
+function activeFilterGroups() {   // 批次25：筛选项分组（复合=成员集合）——组间 AND、组内 ANY
+  return expandFilterGroups([...activeLabels], state.settings.compositeLabels);
+}
 
 /* ============ Task 14: 搜索与标签过滤（今日/历史分开） ============ */
 let searchQuery = '';
-function taskMatches(task, query, labels) {
-  if (labels && labels.size) {
-    for (const l of labels) if (!task.labels.includes(l)) return false;
+function taskMatches(task, query, groups) {   // 批次25：groups=筛选项分组——组间 AND、组内 ANY（复合标签任一成员命中）
+  if (groups && groups.length) {
+    for (const g of groups)
+      if (!g.some(l => task.labels.includes(l))) return false;
   }
   if (query) {
     const q = query.toLowerCase();
@@ -888,7 +1006,8 @@ function createTask(text, labels, subtasks) {
   const t = { id: genId(now), text: text, zone: 'inbox', labels: labels || [],
     subtasks: (subtasks || []).map(s => ({ id: genId(now), text: s.text, done: !!s.done, doneAt: s.doneAt || null })),
     focusMs: 0, focusMsToday: 0, minLine: null, minLineMet: false, rolledOver: false,
-    createdAt: now, lastOpAt: now, completedAt: null };   // 批次22：lastOpAt=距上次操作天数的锚点，创建即初始化
+    createdAt: now, lastOpAt: now, completedAt: null,
+    timeBlocks: [] };   // 批次22：lastOpAt=距上次操作天数的锚点；批次25：timeBlocks=时间块小时数组（仅当天）
   state.tasks.push(t);
   return t;
 }
@@ -911,7 +1030,13 @@ function urlHrefOf(text) {   // 批次5：整体是网址 → 返回 href；否�
 
 function buildTaskCard(task) {
   const card = document.createElement('div');
-  card.className = 'task-card' + (task.zone === 'doing' ? ' doing' : '') + (task.zone === 'done' ? ' done-item' : '');
+  const nowMs = Date.now();   // 批次22：存在天数（≥1天才显示；完成定格）与距上次操作天数（未完成且≥1天才显示）
+  const ageDays = taskAgeDays(task, nowMs);
+  const staleDays = task.zone !== 'done' ? taskStaleDays(task, nowMs) : -1;
+  const nowHour = new Date(nowMs).getHours();   // 批次24：当前小时命中时间块 → 绿框高亮
+  card.className = 'task-card' + (task.zone === 'doing' ? ' doing' : '') + (task.zone === 'done' ? ' done-item' : '') +
+    (staleDays >= 3 ? ' overgrown' : '') +   // 批次24：≥3个工作日未操作枯萎（含未展开态；聚焦中的卡由 CSS 保持清晰）
+    (task.zone !== 'done' && Array.isArray(task.timeBlocks) && task.timeBlocks.includes(nowHour) ? ' block-now' : '');
   card.dataset.id = task.id;
   card.draggable = true;   // Task 8 使用
   const doneSubs = (task.subtasks || []).filter(s => s.done).length;
@@ -922,9 +1047,6 @@ function buildTaskCard(task) {
   const nextHtml = nextSub
     ? ' <span class="next-sub" data-sid="' + nextSub.id + '" title="下一步：点击展开并定位到该子任务">· ' + escapeHtml(nextSub.text) + '</span>'
     : '';
-  const nowMs = Date.now();   // 批次22：存在天数（≥1天才显示；完成定格）与距上次操作天数（未完成且≥1天才显示）
-  const ageDays = taskAgeDays(task, nowMs);
-  const staleDays = task.zone !== 'done' ? taskStaleDays(task, nowMs) : -1;
   card.innerHTML =
     '<div class="task-row">' +
       '<input type="checkbox" class="task-check" ' + (task.zone === 'done' ? 'checked' : '') + '>' +
@@ -1033,9 +1155,13 @@ function fillSubtaskBox(card, task, readOnly) {
     };
     document.addEventListener('mousedown', rearm);
   });
+  const blockHtml = Array.isArray(task.timeBlocks) && task.timeBlocks.length   // 批次25：一任务可占多个时间块，展开时全列
+    ? '<div class="block-badge" title="今日时间块">🕘 ' + task.timeBlocks.slice().sort((a, b) => a - b)
+        .map(h => h + ':00–' + (h + 1) + ':00').join('、') + '</div>'
+    : '';
   if (readOnly) {   // 历史归档卡：只读视图（Task 13 裁定：归档不可篡改，仅查看子任务）
     const view = visibleSubs(task.subtasks, task.doneSubsCollapsed);   // 批次21：折叠时隐藏已完成行（开关在卡片计数徽标）
-    box.innerHTML = view.rows.map(s => {
+    box.innerHTML = blockHtml + view.rows.map(s => {
       const href = urlHrefOf(s.text);   // 批次5：归档子任务网址也可直接打开
       return '<div class="sub-row" data-sid="' + s.id + '">' +
         (href ? '<a class="task-link" target="_blank" rel="noopener" href="' + escapeHtml(href) + '"' + (s.done ? ' style="text-decoration:line-through;color:var(--text-2)"' : '') + '>' + escapeHtml(s.text) + '</a>'
@@ -1047,6 +1173,7 @@ function fillSubtaskBox(card, task, readOnly) {
   }
   const view = visibleSubs(task.subtasks, task.doneSubsCollapsed);   // 批次21：折叠时隐藏已完成行（开关在卡片计数徽标）
   box.innerHTML =
+    blockHtml +
     '<div class="note-box">' + noteShowHtml(task) + '</div>' +   // 批次5：备注置顶、回显态、点击才编辑
     view.rows.map(s => {
       const href = urlHrefOf(s.text);   // 批次5：子任务是网址时可直接打开
@@ -1070,8 +1197,7 @@ function fillSubtaskBox(card, task, readOnly) {
     const text = e.target.value.trim();
     if (!text) return;
     task.subtasks.push({ id: genId(), text: text, done: false });
-    task.lastOpAt = Date.now();   // 批次22：子任务添加计入"上次操作"
-    save(); refreshCard(task.id);
+    save(); refreshCard(task.id);   // 批次25：改子任务不再刷新"上次操作"，只有累计聚焦时长才刷新
     const again = document.querySelector('.task-card[data-id="' + task.id + '"] .sub-input');
     if (again) again.focus();
   });
@@ -1083,7 +1209,6 @@ function fillSubtaskBox(card, task, readOnly) {
       s.done = e.target.checked;
       s.doneAt = e.target.checked ? Date.now() : null;   // 批次17：记录勾选时刻，收尾按"当天"过滤
       if (e.target.checked) celebrate('small');   // 批次4：勾选子任务小庆祝
-      task.lastOpAt = Date.now();   // 批次22：勾选/取消勾选计入"上次操作"
       const ti = state.tasks.indexOf(task);   // 历史归档卡不在 state.tasks（Task 13），跳过回写
       if (ti >= 0) state.tasks[ti] = checkMinLine(task);
       save(); refreshCard(task.id);
@@ -1094,12 +1219,11 @@ function fillSubtaskBox(card, task, readOnly) {
     if (pinBtn) {
       const sid = pinBtn.dataset.sid;
       task.subtasks.forEach(x => { x.pinned = x.id === sid ? !x.pinned : false; });
-      task.lastOpAt = Date.now();   // 批次22：置顶切换计入"上次操作"
       save(); refreshCard(task.id);
       return;
     }
     const del = e.target.closest('.sub-del');
-    if (del) { task.subtasks = task.subtasks.filter(x => x.id !== del.dataset.sid); task.lastOpAt = Date.now(); save(); refreshCard(task.id); return; }   // 批次22：删除计入"上次操作"
+    if (del) { task.subtasks = task.subtasks.filter(x => x.id !== del.dataset.sid); save(); refreshCard(task.id); return; }
     const subTxt = e.target.closest('.sub-text');
     if (subTxt) { startSubEdit(task, subTxt.dataset.sid); return; }   // 批次11：点击子任务文字就地编辑
     const chip = e.target.closest('[data-label]');
@@ -1133,7 +1257,7 @@ function startNoteEdit(task) {   // 批次5：备注编辑态——失焦保存�
   const commit = ok => {
     if (done) return;
     done = true;
-    if (ok) { task.note = ta.value.trim(); task.lastOpAt = Date.now(); save(); }   // 批次22：备注保存计入"上次操作"
+    if (ok) { task.note = ta.value.trim(); save(); }
     else refreshCard(task.id);
   };
   ta.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Escape') commit(false); });
@@ -1155,7 +1279,7 @@ function startSubEdit(task, sid) {   // 批次11：子任务文字就地编辑�
     if (done) return;
     done = true;
     const v = input.value.trim();
-    if (ok && v && v !== s.text) { s.text = v; task.lastOpAt = Date.now(); save(); }   // 批次22：子任务改字计入"上次操作"
+    if (ok && v && v !== s.text) { s.text = v; save(); }
     else refreshCard(task.id);
   };
   input.addEventListener('keydown', e => {
@@ -1227,8 +1351,9 @@ function renderToday() {
   const doingBox = document.getElementById('zone-doing');
   const inboxBox = document.getElementById('zone-inbox');
   doingBox.innerHTML = ''; inboxBox.innerHTML = '';
-  const doing = zoneTasks('doing').filter(t => taskMatches(t, searchQuery, activeLabels));   // Task 14
-  const inbox = zoneTasks('inbox').filter(t => taskMatches(t, searchQuery, activeLabels));
+  const flt = activeFilterGroups();   // 批次25：筛选项分组（复合任一成员命中）
+  const doing = zoneTasks('doing').filter(t => taskMatches(t, searchQuery, flt));   // Task 14
+  const inbox = zoneTasks('inbox').filter(t => taskMatches(t, searchQuery, flt));
   const filtering = !!(searchQuery || activeLabels.size);   // 存在过滤条件（Task 14）
   document.getElementById('count-doing').textContent = doing.length + '/' + state.settings.maxDoing;
   document.getElementById('count-inbox').textContent = String(inbox.length);
@@ -1270,7 +1395,7 @@ document.getElementById('btn-add-done').addEventListener('click', () => {   // �
 function renderDone() {
   const box = document.getElementById('zone-donelist');
   box.innerHTML = '';
-  const done = zoneTasks('done').filter(t => taskMatches(t, searchQuery, activeLabels))   // Task 14（filter 已返回新数组）
+  const done = zoneTasks('done').filter(t => taskMatches(t, searchQuery, activeFilterGroups()))   // Task 14（filter 已返回新数组；批次25：分组过滤）
     .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
   document.getElementById('count-done').textContent = String(done.length);
   done.forEach(t => {
@@ -1307,7 +1432,7 @@ function renderHistory() {
   }
   let shownDays = 0;
   state.history.slice().sort((a, b) => b.date.localeCompare(a.date)).forEach(day => {
-    const tasks = day.tasks.filter(t => taskMatches(t, searchQuery, activeLabels));   // Task 14
+    const tasks = day.tasks.filter(t => taskMatches(t, searchQuery, activeFilterGroups()));   // Task 14；批次25：分组过滤
     if (!tasks.length) return;   // 过滤后为空的日期分组整体隐藏
     shownDays++;
     const d = new Date(day.date + 'T00:00:00');
@@ -1372,6 +1497,7 @@ function restoreToToday(archivedTask, fromDate) {
   clone.minLine = null; clone.minLineMet = false;
   clone.rolledOver = false; clone.createdAt = now; clone.completedAt = null;
   clone.lastOpAt = now;   // 批次22：恢复后当作新任务，存在天数与距上次操作天数归零
+  clone.timeBlocks = [];   // 批次24/25：时间块不跟随恢复（仅当天生效）
   state.tasks.push(clone);
   save();
   showToast('已恢复到今日 inbox' + (fromDate ? '（来自 ' + fromDate + '）' : ''));
@@ -1399,9 +1525,11 @@ const FONT_ALIASES = {   // 批次3：中文名附带英文别名，本机缺中
 };
 const FAV_KOALA = document.querySelector('link[rel="icon"]').href;   // 批次11：聚焦态在标签栏可见（favicon 红点 + 标题前缀）
 const FAV_FOCUS = 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐨</text><circle cx=%2280%22 cy=%2220%22 r=%2214%22 fill=%22%23EF4444%22 stroke=%22white%22 stroke-width=%224%22/></svg>';
+let focusTitleMin = -1;   // 批次24：标签页标题里的专注分钟数缓存（变化才写）
 function setFocusIndicator(on) {
   document.querySelector('link[rel="icon"]').href = on ? FAV_FOCUS : FAV_KOALA;
-  document.title = on ? '◉ KoalaFocus' : 'KoalaFocus';   // 批次12：只用符号，不写字样
+  focusTitleMin = -1;
+  document.title = on ? '◉ KoalaFocus' : 'KoalaFocus';   // 批次12：只用符号；批次24：进入聚焦后分钟数由 focusTick 刷新
 }
 
 function applyFont() {   // 批次2：字体/字号（字体仅限本机已安装；字号=整体缩放）
@@ -1500,7 +1628,7 @@ function startFocus(id) {
   if (state.focusSession) { showToast('已在聚焦中，先退出当前聚焦'); return; }
   const t = state.tasks.find(x => x.id === id);
   if (!t) return;
-  t.lastOpAt = Date.now();   // 批次22：聚焦计时计入"上次操作"
+  deepFocusSub = null;   // 批次25：新聚焦会话从普通模式开始（lastOpAt 在结算时由 settleFocusSession 刷新）
   state.focusSession = { taskId: id, startAt: Date.now() };
   saveState();
   setFocusIndicator(true);   // 批次11：标签栏红点提示聚焦中
@@ -1512,17 +1640,16 @@ function startFocus(id) {
 
 function exitFocus() {
   if (!state.focusSession) return;
-  const fid = state.focusSession.taskId;   // 批次22：结算后 focusSession 已清空，先记下任务号
+  deepFocusSub = null;   // 批次25：退出聚焦同时退出加强聚焦（lastOpAt 已在结算时刷新）
   const r = settleFocusSession(state, Date.now());
   state = r.state;
-  const ft = state.tasks.find(x => x.id === fid);   // 批次22：聚焦退出计入"上次操作"（settle 是深拷贝，须改新对象）
-  if (ft) ft.lastOpAt = Date.now();
   save();
   applyFocusUi();
   setFocusIndicator(false);   // 批次11：解除标签栏聚焦提示
   if (r.needRest) showRestPrompt();
 }
 
+let deepFocusSub = null;   // 批次25：加强聚焦=任务+指定子任务（点子任务行 🎯 进入，仅本次聚焦会话有效）
 function applyFocusUi() {
   const on = !!state.focusSession;
   document.body.classList.toggle('focusing', on);
@@ -1531,6 +1658,16 @@ function applyFocusUi() {
     const card = document.querySelector('.task-card[data-id="' + state.focusSession.taskId + '"]');
     if (card) {
       card.classList.add('focused');
+      // 批次25：子任务行注入 🎯（仅聚焦卡）——点哪个子任务就加强显示"任务+该子任务"
+      card.querySelectorAll('.sub-row[data-sid]').forEach(row => {
+        if (row.querySelector('.sub-focus')) return;
+        const b = document.createElement('button');
+        b.className = 'icon-btn sub-focus';
+        b.title = '加强聚焦：只显示任务名与该子任务';
+        b.textContent = '🎯';
+        b.addEventListener('click', () => toggleDeepFocus(row.dataset.sid));
+        row.insertBefore(b, row.querySelector('.sub-pin, .sub-del'));
+      });
       // 聚焦卡片内加计时条与退出按钮
       let bar = card.querySelector('.focus-bar');
       if (!bar) {
@@ -1543,7 +1680,29 @@ function applyFocusUi() {
       }
     }
   }
+  applyDeepFocusUi();
   focusTick();   // 批次3：重挂聚焦 UI 后立即写入当前时长与顶栏累计，消除重绘瞬间计时数字闪空
+}
+function applyDeepFocusUi() {   // 批次25：把加强态挂到卡片/目标子任务行/底行退出按钮（渲染后重挂）
+  const card = document.querySelector('.task-card.focused');
+  if (!card) return;
+  card.classList.toggle('deep-focus', !!deepFocusSub);
+  card.querySelectorAll('.sub-row[data-sid]').forEach(r =>
+    r.classList.toggle('deep-target', r.dataset.sid === deepFocusSub));
+  const bar = card.querySelector('.focus-bar');
+  if (!bar) return;
+  let ex = bar.querySelector('.deep-exit');
+  if (deepFocusSub && !ex) {
+    ex = document.createElement('button');
+    ex.className = 'btn deep-exit';
+    ex.textContent = '🎯 退出加强';
+    ex.addEventListener('click', () => { deepFocusSub = null; applyDeepFocusUi(); });
+    bar.appendChild(ex);
+  } else if (!deepFocusSub && ex) ex.remove();
+}
+function toggleDeepFocus(sid) {   // 批次25：点同子任务再点一次=退出；点不同子任务=切换目标——纯视觉，聚焦计时不变
+  deepFocusSub = (deepFocusSub === sid) ? null : sid;
+  applyDeepFocusUi();
 }
 
 function focusTick() {
@@ -1551,6 +1710,8 @@ function focusTick() {
   const elapsed = Date.now() - state.focusSession.startAt;
   const shown = state.todayFocusMs + elapsed;   // 今日总聚焦实时含进行中会话
   document.getElementById('focus-total').textContent = formatDuration(shown);
+  const mins = Math.floor(elapsed / 60000);   // 批次26：标签页标题显示当前聚焦会话时长（红点右侧，非当日累计）
+  if (mins !== focusTitleMin) { focusTitleMin = mins; document.title = '◉ ' + mins + 'min KoalaFocus'; }
   const clock = document.querySelector('.task-card.focused .focus-clock');
   if (clock) {
     clock.textContent = formatDuration(elapsed);
@@ -1672,7 +1833,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
 
 /* ============ Task 15: 区域复制、单事项复制与批量添加 ============ */
 function copyZone(zone) {
-  const list = zoneTasks(zone).filter(t => taskMatches(t, searchQuery, activeLabels));   // 遵循当前搜索/标签过滤
+  const list = zoneTasks(zone).filter(t => taskMatches(t, searchQuery, activeFilterGroups()));   // 遵循当前搜索/标签过滤（批次25：分组过滤）
   if (!list.length) { showToast('该区域没有可复制的事项'); return; }
   // 批次2：已完成区复制为纯任务名（每行一个，无前缀/标签/子任务）；完整格式走导出。今日区保持 round-trip 格式
   const text = zone === 'done' ? list.map(t => t.text).join('\n') : formatTasksAsText(list);
@@ -1904,8 +2065,8 @@ function celebrate(size) {
   })(t0);
 }
 
-/* ============ 批次4：今日聚焦时间轴（点击第一行日期弹出，9:00–22:00） ============ */
-document.getElementById('date-label').addEventListener('click', () => {
+/* ============ 批次4/25：今日聚焦时间轴（点击「⏱ 今日聚焦」弹出，9:00–22:00） ============ */
+document.querySelector('header.topbar .focus-total').addEventListener('click', () => {   // 批次25：入口从日期改到今日聚焦
   renderTimeline();
   document.getElementById('modal-timeline').classList.add('show');
 });
@@ -1920,13 +2081,21 @@ document.getElementById('btn-timeline-close').addEventListener('click', () =>
   }
 })();
 function renderTimeline() {
+  renderTimelinePlan();   // 批次24：时间轴上方的时间块规划区
   const segs = (state.focusLog || []).slice();
-  if (state.focusSession) segs.push({ start: state.focusSession.startAt, end: Date.now() });   // 进行中的会话实时计入
+  if (state.focusSession) segs.push({ start: state.focusSession.startAt, end: Date.now(), taskId: state.focusSession.taskId });   // 进行中的会话实时计入
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
   const blocks = layoutTimeline(segs, dayStart.getTime(), 9, 22);
   document.getElementById('timeline-blocks').innerHTML =
-    blocks.map(b => '<div style="left:' + b.leftPct + '%;width:' + b.widthPct + '%"></div>').join('');
+    blocks.map(b => {   // 批次24：块内直接显示任务名，颜色取任务第一个标签
+      const t = b.seg.taskId ? state.tasks.find(x => x.id === b.seg.taskId) : null;
+      const name = t ? t.text : '未归属';
+      const color = t && t.labels && t.labels.length ? labelColor(t.labels[0]) : (t ? 'var(--accent)' : '#94A3B8');
+      const tip = name + ' · ' + fmtTimeHM(b.seg.start) + '–' + fmtTimeHM(b.seg.end) + ' · ' + formatDuration(b.seg.end - b.seg.start);
+      return '<div style="left:' + b.leftPct + '%;width:' + b.widthPct + '%;background:' + color + '" title="' + escapeHtml(tip) + '">' +
+        (b.widthPct >= 6 ? '<span>' + escapeHtml(name) + '</span>' : '') + '</div>';
+    }).join('');
   const liveMs = state.focusSession ? Date.now() - state.focusSession.startAt : 0;
   document.getElementById('timeline-summary').textContent =   // 批次5：区分"无记录"与"有记录但全在界外"
     '聚焦 ' + segs.length + ' 段' +
@@ -1938,6 +2107,96 @@ function renderTimeline() {
   document.getElementById('timeline-donut').innerHTML =   // 批次13：当天标签饼图
     donutSvg(labelFocusTotals([{ date: '', focusMs: 0, isToday: true, focusLog: [], tasks: state.tasks }], state.settings.labels));
 }
+
+/* ============ 批次24：时间块规划（拖未完成任务到小时格，仅当天生效） ============ */
+let planDrag = null;   // 拖动中的任务 id（与主界面 dragCtx 互不相干）
+function renderTimelinePlan() {
+  const cellsBox = document.getElementById('tl-plan-cells');
+  const poolBox = document.getElementById('tl-plan-tasks');
+  const nowHour = new Date().getHours();
+  cellsBox.innerHTML = '';
+  for (let h = 9; h < 22; h++) {
+    const cell = document.createElement('div');
+    cell.className = 'tl-cell' + (h === nowHour ? ' now' : '');
+    cell.dataset.hour = h;
+    cell.innerHTML = '<span class="h">' + h + '</span>';
+    const inCell = state.tasks.filter(t => t.zone !== 'done' && Array.isArray(t.timeBlocks) && t.timeBlocks.includes(h));
+    cell.title = inCell.length   // 批次25：悬停格子（含时间点）直接看该时段排了什么任务
+      ? h + ':00–' + (h + 1) + ':00：' + inCell.map(t => t.text).join('、')
+      : h + ':00–' + (h + 1) + ':00';
+    inCell.forEach(t => {
+      const chip = document.createElement('div');
+      chip.className = 'tl-chip';
+      chip.style.background = t.labels && t.labels.length ? labelColor(t.labels[0]) : 'var(--accent)';
+      chip.title = t.text;
+      chip.innerHTML = '<span class="n">' + escapeHtml(t.text) + '</span><button class="x" title="移出该时间块">✕</button>';
+      chip.querySelector('.x').addEventListener('click', () => {
+        t.timeBlocks = t.timeBlocks.filter(x => x !== h);
+        save(); renderTimelinePlan();
+      });
+      cell.appendChild(chip);
+    });
+    cellsBox.appendChild(cell);
+  }
+  const pool = state.tasks.filter(t => t.zone !== 'done');   // doing 在前、inbox 保持原顺序
+  const ordered = pool.filter(t => t.zone === 'doing').concat(pool.filter(t => t.zone === 'inbox'));
+  poolBox.innerHTML = '';
+  if (!ordered.length) { poolBox.innerHTML = '<span class="empty-hint" style="padding:4px 0;display:inline-block">今天没有未完成任务</span>'; return; }
+  ordered.forEach(t => {
+    const chip = document.createElement('button');
+    const hours = (t.timeBlocks || []).slice().sort((a, b) => a - b);
+    chip.className = 'tl-pool-chip';
+    chip.innerHTML = escapeHtml(t.text) + (hours.length ? ' <span class="at">' + hours.join('、') + '点</span>' : '');
+    chip.title = '拖到上方时间块（可拖多个）';
+    chip.draggable = true;
+    chip.addEventListener('dragstart', e => {
+      planDrag = t.id;
+      chip.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', t.id);
+    });
+    chip.addEventListener('dragend', () => { planDrag = null; chip.classList.remove('dragging'); });
+    poolBox.appendChild(chip);
+  });
+}
+(function bindPlanDnd() {   // 格子为拖放目标：拖入即新增一块（同一任务可占多个时间块，重复拖同格无效）
+  const box = document.getElementById('tl-plan-cells');
+  box.addEventListener('dragover', e => {
+    if (planDrag == null) return;
+    const cell = e.target.closest('.tl-cell');
+    if (!cell) return;
+    e.preventDefault();
+    cell.classList.add('over');
+  });
+  box.addEventListener('dragleave', e => {
+    const cell = e.target.closest('.tl-cell');
+    if (cell) cell.classList.remove('over');
+  });
+  box.addEventListener('drop', e => {
+    const cell = e.target.closest('.tl-cell');
+    if (!cell || planDrag == null) return;
+    e.preventDefault();
+    cell.classList.remove('over');
+    const t = state.tasks.find(x => x.id === planDrag);
+    planDrag = null;
+    if (!t) return;
+    const h = parseInt(cell.dataset.hour, 10);
+    if (!Array.isArray(t.timeBlocks)) t.timeBlocks = [];
+    if (t.timeBlocks.includes(h)) return;   // 已在该格，不重复
+    t.timeBlocks.push(h);
+    t.timeBlocks.sort((a, b) => a - b);
+    save();   // 触发 renderAll：主界面展开徽标与"当前时间块"高亮同步
+    renderTimelinePlan();
+  });
+})();
+setInterval(function updateBlockNow() {   // 批次24：整点跨越时轻量刷新"当前时间块"高亮（不整页重绘，避免打断就地编辑）
+  const h = new Date().getHours();
+  document.querySelectorAll('.task-card[data-id]').forEach(c => {
+    const t = state.tasks.find(x => x.id === c.dataset.id);
+    c.classList.toggle('block-now', !!(t && t.zone !== 'done' && Array.isArray(t.timeBlocks) && t.timeBlocks.includes(h)));
+  });
+  if (document.getElementById('modal-timeline').classList.contains('show')) renderTimelinePlan();
+}, 30000);
 
 /* ============ 批次20：今日聚焦段管理（点任务卡 ⏱ 徽标打开） ============ */
 let flTaskId = null, flEditing = -1;
@@ -2073,6 +2332,49 @@ function donutSvg(totals) {   // 标签占比甜甜圈（中心总时长 + 右�
   return '<div class="donut-wrap">' + s + legend + '</div>';
 }
 
+function heatSvg() {   // 批次24：GitHub 风格专注热力图（全部历史，周列×7行，绿色按当日时长分档）
+  const today = todayStr(Date.now());
+  const hist = state.history.map(h => h.date).sort();
+  const from = hist.length && hist[0] < today ? hist[0] : today;
+  const days = buildStatsDays(state, from, today, today);
+  const map = {};
+  const live = state.focusSession ? Date.now() - state.focusSession.startAt : 0;   // 进行中会话实时计入今天
+  days.forEach(d => map[d.date] = d.focusMs + (d.isToday ? live : 0));
+  const maxDay = Math.max(0, ...Object.keys(map).map(k => map[k]));
+  if (!maxDay) return '<div class="empty-hint" style="padding:6px 0">暂无聚焦记录</div>';
+  const start = new Date(from + 'T00:00:00');
+  start.setDate(start.getDate() - (start.getDay() + 6) % 7);   // 对齐到所在周周一
+  const end = new Date(today + 'T00:00:00');
+  const totalDays = Math.round((end - start) / 86400000) + 1;
+  const weeks = Math.ceil(totalDays / 7);
+  const CELL = 12, GAP = 3, LBL = 20, TOP = 16;
+  const W = LBL + weeks * (CELL + GAP) + 4, H = TOP + 7 * (CELL + GAP);
+  let s = '<svg width="' + W + '" height="' + H + '" style="display:block">';
+  [['一', 0], ['三', 2], ['五', 4], ['日', 6]].forEach(p =>   // 行标签（稀疏标注如 GitHub）
+    s += '<text x="' + (LBL - 5) + '" y="' + (TOP + p[1] * (CELL + GAP) + CELL - 1) + '" text-anchor="end" font-size="9" fill="var(--text-2)">' + p[0] + '</text>');
+  let lastMonth = -1;
+  for (let w = 0; w < weeks; w++) {
+    for (let r = 0; r < 7; r++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + w * 7 + r);
+      if (d > end) continue;   // 未来日期不画
+      const ds = todayStr(d.getTime());
+      const level = heatLevel(map[ds] || 0, maxDay);
+      s += '<rect x="' + (LBL + w * (CELL + GAP)) + '" y="' + (TOP + r * (CELL + GAP)) + '" width="' + CELL + '" height="' + CELL + '" rx="2.5" fill="var(--heat-' + level + ')">' +
+        '<title>' + ds + (ds === today ? '（今天）' : '') + ' · ' + formatDuration(map[ds] || 0) + '</title></rect>';
+    }
+    const monday = new Date(start);
+    monday.setDate(start.getDate() + w * 7);
+    if (monday.getMonth() !== lastMonth) {   // 月份标签：每月首周标注
+      s += '<text x="' + (LBL + w * (CELL + GAP)) + '" y="10" font-size="9" fill="var(--text-2)">' + (monday.getMonth() + 1) + '月</text>';
+      lastMonth = monday.getMonth();
+    }
+  }
+  s += '</svg>';
+  const legend = '<div class="heat-legend">少 ' + [0, 1, 2, 3, 4].map(i => '<i style="background:var(--heat-' + i + ')"></i>').join('') + ' 多</div>';
+  return s + legend;
+}
+
 let statsRangeMode = '7';
 function statsFromTo() {
   const to = todayStr(Date.now());
@@ -2103,6 +2405,7 @@ function renderStats() {
     ['日均聚焦', formatDuration(Math.round(totalMs / activeDays))], ['最长单日', formatDuration(maxDay)]
   ].map(c => '<div class="stat-card"><div class="v">' + c[1] + '</div><div class="k">' + c[0] + '</div></div>').join('');
   document.getElementById('stats-line').innerHTML = days.length > 1 || days[0] ? lineSvg(days) : '';
+  document.getElementById('stats-heat').innerHTML = heatSvg();   // 批次24：热力图固定展示全部历史，不随范围按钮变
   const withData = days.filter(d => d.tasks.length || d.focusMs > 0).slice().reverse();
   let hasFallback = false;
   document.getElementById('stats-timelines').innerHTML = withData.length ? withData.map(d => {
@@ -2219,6 +2522,7 @@ function importTasksIntoInbox(tasks) {
     if (c.zone !== 'done') { c.zone = 'inbox'; c.completedAt = null; }
     else if (!c.completedAt) c.completedAt = now;
     c.rolledOver = false; c.focusMsToday = 0; c.minLine = null; c.minLineMet = false;
+    c.timeBlocks = [];   // 批次24/25：导入任务不携带时间块
     state.tasks.push(c); n++;
   });
   return n;
@@ -2313,6 +2617,7 @@ function renderSettings() {
       if (!nn) { e.target.value = l.name; return; }
       state.tasks.forEach(t => t.labels = t.labels.map(x => x === l.name ? nn : x));
       state.settings.dailyFixed.forEach(f => f.labels = (f.labels || []).map(x => x === l.name ? nn : x));
+      (state.settings.compositeLabels || []).forEach(c => c.members = (c.members || []).map(x => x === l.name ? nn : x));   // 批次24：复合标签成员同步改名
       l.name = nn; save();
     });
     row.querySelector('.lbl-color').addEventListener('change', e => { l.color = e.target.value; save(); });
@@ -2325,10 +2630,12 @@ function renderSettings() {
     row.querySelector('.lbl-del').addEventListener('click', () => {
       state.tasks.forEach(t => t.labels = t.labels.filter(x => x !== l.name));
       state.settings.dailyFixed.forEach(f => f.labels = (f.labels || []).filter(x => x !== l.name));
+      (state.settings.compositeLabels || []).forEach(c => c.members = (c.members || []).filter(x => x !== l.name));   // 批次24：从复合标签成员中移除
       state.settings.labels.splice(i, 1); save(); renderSettings();
     });
     lb.appendChild(row);
   });
+  renderCompositeSettings();   // 批次24：复合标签管理区
   const dl = document.getElementById('settings-daily');
   dl.innerHTML = '';
   state.settings.dailyFixed.forEach((f, i) => {
@@ -2368,8 +2675,70 @@ document.getElementById('btn-settings').addEventListener('click', () => {
   renderSettings(); document.getElementById('modal-settings').classList.add('show');
 });
 
+/* ============ 批次24：复合标签设置（仅筛选用；成员点选普通标签） ============ */
+function renderCompositeSettings() {
+  const box = document.getElementById('settings-composites');
+  box.innerHTML = '';
+  const cs = state.settings.compositeLabels || [];
+  if (!cs.length) {
+    box.innerHTML = '<p style="font-size:12px;color:var(--text-2);margin:4px 0">还没有复合标签。新增后勾选成员标签，筛选栏即可一键同时筛多个标签。</p>';
+    return;
+  }
+  cs.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    row.style.flexWrap = 'wrap';
+    const members = c.members || [];
+    row.innerHTML =
+      '<input type="text" class="cp-name" value="' + escapeHtml(c.name) + '" style="flex:0 0 110px">' +
+      '<input type="color" class="cp-color" value="' + escapeHtml(c.color || '#5B8DEF') + '">' +
+      '<div style="flex:1;min-width:220px;display:flex;flex-wrap:wrap;gap:4px">' +
+        state.settings.labels.map(l =>
+          '<button class="chip' + (members.includes(l.name) ? ' on' : '') + '" data-member="' + escapeHtml(l.name) + '" style="font-size:11px;padding:2px 8px' +
+          (members.includes(l.name) ? ';background:' + escapeHtml(l.color) : '') + '">' + escapeHtml(l.name) + '</button>').join('') +
+      '</div>' +
+      '<button class="icon-btn cp-del" title="删除复合标签">✕</button>';
+    row.querySelector('.cp-name').addEventListener('change', e => {
+      const nn = e.target.value.trim();
+      const clashRegular = state.settings.labels.some(l => l.name === nn);
+      const clashOther = cs.some((x, j) => j !== i && x.name === nn);
+      if (!nn || clashRegular || clashOther) {
+        showToast(!nn ? '名称不能为空' : '与现有' + (clashRegular ? '普通' : '复合') + '标签重名');
+        e.target.value = c.name; return;
+      }
+      if (activeLabels.has(c.name)) { activeLabels.delete(c.name); activeLabels.add(nn); }   // 选中态跟着改名
+      c.name = nn; save();
+    });
+    row.querySelector('.cp-color').addEventListener('change', e => { c.color = e.target.value; save(); });
+    row.querySelectorAll('[data-member]').forEach(btn => btn.addEventListener('click', () => {
+      const m = btn.dataset.member;
+      c.members = members.includes(m) ? members.filter(x => x !== m) : members.concat(m);
+      save();   // renderAll 会刷新筛选栏的复合 chip
+      renderCompositeSettings();
+    }));
+    row.querySelector('.cp-del').addEventListener('click', () => {
+      activeLabels.delete(c.name);
+      cs.splice(i, 1); save(); renderCompositeSettings(); renderAll();
+    });
+    box.appendChild(row);
+  });
+}
+document.getElementById('btn-composite-add').addEventListener('click', () => {
+  state.settings.compositeLabels.push({ name: '新复合' + (state.settings.compositeLabels.length + 1), color: '#5B8DEF', members: [] });
+  save(); renderCompositeSettings();
+});
+
 /* ============ 批次23：更新日志 ============ */
 const CHANGELOG = [   // 批次23：新→旧；以后每次 push 前在此追加最新改动并经确认
+  { date: '2026-09-12', items: [
+    '任务 ≥3 个工作日未操作会「枯萎」：卡片去色泛黄并长出 🌿，未展开也可见（天数计算跳过周末；只有真正累计聚焦时长才重置计时，改子任务/备注等不算；已完成不受影响）',
+    '时间块规划：点顶部「⏱ 今日聚焦」进入，把未完成任务拖进 9:00–22:00 小时格（一个任务可占多个时间块，悬停格子看该时段任务，明天自动清空）；任务展开可见 🕘 时间块，到点未完成的任务卡片绿框高亮',
+    '聚焦时标签页标题实时显示当前聚焦会话时长（如 ◉ 42min KoalaFocus）',
+    '加强聚焦：聚焦卡片里点子任务行的 🎯，子任务居中放大、任务名缩小置于右下角，只留文字与计时；子任务行悬停整行高亮',
+    '今日聚焦时间轴的色块内直接显示任务名，颜色跟随任务的第一个标签',
+    '统计新增 GitHub 风格专注热力图：绿色深浅代表当日专注时长，覆盖全部历史',
+    '新增复合标签（如「杂」＝无脑＋等回复）：设置页创建，筛选栏以虚线样式排在普通标签前，任务含任一成员标签即命中；给任务打标签时不可选用'
+  ] },
   { date: '2026-09-11', items: [
     '已完成子任务可折叠：点卡片上的计数徽标（如 1/3）切换显示/隐藏，折叠状态按任务记忆、刷新保持，历史归档同样适用',
     '任务卡新增存在天数与距上次操作天数：显示在 ⏱ 用时右边（📅 N天(N天)），已完成的任务定格在完成那天，≥3 天无操作括号变红',

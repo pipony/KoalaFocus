@@ -272,10 +272,11 @@ t('rollover：focusLog 跨天清空', () => {
 });
 t('layoutTimeline：区间映射、边界钳制与丢弃零宽', () => {
   const base = new Date(2026, 7, 26, 0, 0, 0).getTime();
-  const r1 = core.layoutTimeline([{start: base + 10*3600000, end: base + 11*3600000}], base, 9, 22);
+  const r1 = core.layoutTimeline([{start: base + 10*3600000, end: base + 11*3600000, taskId: 't1'}], base, 9, 22);
   eq(r1.length, 1);
   if (Math.abs(r1[0].leftPct - 100/13) > 0.01) throw new Error('left wrong: ' + r1[0].leftPct);
   if (Math.abs(r1[0].widthPct - 100/13) > 0.01) throw new Error('width wrong: ' + r1[0].widthPct);
+  eq(r1[0].seg, {start: base + 10*3600000, end: base + 11*3600000, taskId: 't1'});   // 批次24：块携带原区间（渲染任务名用）
   const r2 = core.layoutTimeline([{start: base + 8*3600000, end: base + 9.5*3600000}], base, 9, 22);
   eq(r2.length, 1);
   if (Math.abs(r2[0].leftPct) > 0.01) throw new Error('clamp-left wrong');
@@ -455,15 +456,70 @@ t('taskAgeDays 已完成定格在完成日，不再随今天增长', () => {
   const t = mkTask('done', 'A', { createdAt: new Date(2026, 8, 2).getTime(), completedAt: new Date(2026, 8, 7).getTime() });
   eq(core.taskAgeDays(t, now), 5);   // 完成那天是第5天，今天已第10天但不更新
 });
-t('taskStaleDays 按上次操作算，今天操作过=0', () => {
-  const now = new Date(2026, 8, 12, 10, 0).getTime();
+t('taskStaleDays 按上次操作算（工作日差，跳过周末），今天操作过=0', () => {
+  const now = new Date(2026, 8, 12, 10, 0).getTime();   // 周六
   eq(core.taskStaleDays(mkTask('inbox', 'A', { createdAt: 1, lastOpAt: now }), now), 0);
-  eq(core.taskStaleDays(mkTask('inbox', 'A', { createdAt: 1, lastOpAt: new Date(2026, 8, 9, 20, 0).getTime() }), now), 3);
+  eq(core.taskStaleDays(mkTask('inbox', 'A', { createdAt: 1, lastOpAt: new Date(2026, 8, 9, 20, 0).getTime() }), now), 2);   // 周三→周六：周四、周五（周六不计）
 });
 t('taskStaleDays 无记录回退创建时间；未来时刻钳为0', () => {
-  const now = new Date(2026, 8, 12, 10, 0).getTime();
-  eq(core.taskStaleDays(mkTask('inbox', 'A', { createdAt: new Date(2026, 8, 10).getTime() }), now), 2);
+  const now = new Date(2026, 8, 12, 10, 0).getTime();   // 周六
+  eq(core.taskStaleDays(mkTask('inbox', 'A', { createdAt: new Date(2026, 8, 10).getTime() }), now), 1);   // 周四→周六：只过周五
   eq(core.taskStaleDays(mkTask('inbox', 'A', { createdAt: 1, lastOpAt: now + 60000 }), now), 0);
+});
+
+// ---- 批次24/25：时间块规划（跨天清空） / 复合标签（ANY 分组） / 热力图色阶 / 工作日差 ----
+t('rollover：timeBlocks 跨天清空（时间块仅当天生效），归档任务原样保留', () => {
+  const s = mkState({ lastActiveDate: '2026-08-25', tasks: [
+    mkTask('inbox', 'B', { timeBlocks: [14, 16] }),
+    mkTask('done', 'A', { completedAt: 5, timeBlocks: [9] })
+  ]});
+  const r = core.rollover(s, new Date(2026, 8, 26, 9, 0));
+  eq(by(r.state, 'B').timeBlocks, []);
+  eq(r.state.history[0].tasks.find(x => x.text === 'A').timeBlocks, [9]);   // 归档只读，字段不动
+});
+t('defaultState 含 compositeLabels 默认空数组', () => {
+  eq(core.defaultState(0).settings.compositeLabels, []);
+});
+t('expandFilterGroups：复合标签成一组（组内任一命中），普通标签单成一组', () => {
+  const cs = [{ name: '杂', color: '#000', members: ['无脑', '3分钟'] }];
+  eq(core.expandFilterGroups(['杂'], cs), [['3分钟', '无脑']]);
+  eq(core.expandFilterGroups(['杂', '深度'], cs), [['3分钟', '无脑'], ['深度']]);   // 组间 AND、组内 ANY
+  eq(core.expandFilterGroups(['深度'], cs), [['深度']]);
+});
+t('expandFilterGroups：复合与普通混选各自成组、未知名字原样、无复合配置安全', () => {
+  const cs = [{ name: '杂', color: '#000', members: ['无脑', '3分钟'] }];
+  eq(core.expandFilterGroups(['杂', '无脑'], cs), [['3分钟', '无脑'], ['无脑']]);
+  eq(core.expandFilterGroups(['幽灵'], cs), [['幽灵']]);   // 复合已删/未知 → 原样（匹配不到即无结果）
+  eq(core.expandFilterGroups(['深度'], null), [['深度']]);
+  eq(core.expandFilterGroups([], cs), []);
+});
+t('heatLevel：0时长=0档，其余按最大日四分位取1-4档', () => {
+  const H = 3600000, M = 60000;
+  eq(core.heatLevel(0, 4 * H), 0);
+  eq(core.heatLevel(30 * M, 4 * H), 1);    // 12.5% → 1
+  eq(core.heatLevel(1 * H, 4 * H), 1);     // 恰 25% → 1
+  eq(core.heatLevel(1.5 * H, 4 * H), 2);   // 37.5% → 2
+  eq(core.heatLevel(2 * H, 4 * H), 2);     // 恰 50% → 2
+  eq(core.heatLevel(3 * H, 4 * H), 3);     // 75% → 3
+  eq(core.heatLevel(4 * H, 4 * H), 4);     // 100% → 4
+  eq(core.heatLevel(5 * H, 4 * H), 4);     // 超过最大钳为 4
+  eq(core.heatLevel(10 * M, 0), 4);        // 最大日为0但有记录 → 4（防除零）
+});
+t('workdayGap 工作日差：跳过周六日（2026-09-12 为周六）', () => {
+  const D = (m, d) => new Date(2026, m - 1, d).getTime();
+  eq(core.workdayGap(D(9, 12), D(9, 12)), 0);   // 同日
+  eq(core.workdayGap(D(9, 11), D(9, 14)), 1);   // 周五→下周一：只有周一步入
+  eq(core.workdayGap(D(9, 10), D(9, 14)), 2);   // 周四→下周一：周五+周一
+  eq(core.workdayGap(D(9, 9), D(9, 16)), 5);    // 周三→下周三：5 个工作日
+  eq(core.workdayGap(D(9, 12), D(9, 14)), 1);   // 周六→周一
+  eq(core.workdayGap(D(9, 13), D(9, 14)), 1);   // 周日→周一
+  eq(core.workdayGap(D(9, 14), D(9, 12)), 0);   // 倒序钳 0
+});
+t('settleFocusSession：结算聚焦时长时刷新 lastOpAt（未处理天数只认聚焦时长）', () => {
+  const task = mkTask('doing', 'A', { lastOpAt: new Date(2026, 8, 8, 10, 0).getTime() });
+  const s = mkState({ tasks: [task], focusSession: { taskId: task.id, startAt: 1000000 } });
+  const r = core.settleFocusSession(s, 1000000 + 60000);
+  eq(r.state.tasks[0].lastOpAt, 1060000);   // 刷新为结算时刻
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');
