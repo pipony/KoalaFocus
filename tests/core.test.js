@@ -87,7 +87,20 @@ t('每日固定事项注入且按文本去重', () => {
   eq(r.state.tasks.filter(x => x.text === '日报').length, 1);   // 已存在不重复注入
   const fx = by(r.state, '晨间回顾');
   eq(fx.zone, 'inbox'); eq(fx.labels, ['深度']);
-  eq(fx.subtasks, [{ text: '过一遍昨日遗留', done: false }]);
+  eq(fx.subtasks.length, 1);
+  eq(fx.subtasks[0].text, '过一遍昨日遗留');
+  eq(fx.subtasks[0].done, false);
+});
+t('rollover：固定事项注入的子任务带唯一 id（勾选/📌/✕ 依赖 data-sid 定位）', () => {
+  const s = mkState({ lastActiveDate: '2026-08-25',
+    settings: Object.assign(core.defaultState(0).settings, { dailyFixed: [
+      { text: '晨间回顾', labels: [], subtasks: [{ text: 'a', done: false }, { text: 'b', done: false }] }] }) });
+  const r = core.rollover(s, new Date(2026, 7, 26, 9, 0));
+  const subs = by(r.state, '晨间回顾').subtasks;
+  eq(subs.map(x => x.text), ['a', 'b']);
+  eq(subs.every(x => typeof x.id === 'string' && /^t_\d+_\d+$/.test(x.id)), true);
+  eq(subs[0].id === subs[1].id, false);   // 同批注入也互不重复
+  eq(subs.every(x => x.done === false && x.doneAt == null), true);
 });
 t('聚焦会话跨天：已聚焦时长入昨日归档、会话延续到今天', () => {
   const task = mkTask('doing', 'A');
@@ -479,6 +492,9 @@ t('rollover：timeBlocks 跨天清空（时间块仅当天生效），归档任�
 });
 t('defaultState 含 compositeLabels 默认空数组', () => {
   eq(core.defaultState(0).settings.compositeLabels, []);
+});
+t('defaultState 含 blockLabel 默认「阻塞等待」', () => {
+  eq(core.defaultState(0).settings.blockLabel, '阻塞等待');
 });
 t('expandFilterGroups：复合标签成一组（组内任一命中），普通标签单成一组', () => {
   const cs = [{ name: '杂', color: '#000', members: ['无脑', '3分钟'] }];

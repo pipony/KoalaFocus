@@ -159,7 +159,7 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
 .daily-row .df-text { flex: 2; } .daily-row .df-labels { flex: 1; }
 .daily-row textarea { width: 100%; padding: 6px 10px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; font-size: 13px; resize: vertical; }
 .settings-params { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; }
-.settings-params input { padding: 5px 8px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
+.settings-params input, .settings-params select { padding: 5px 8px; border: 1px solid var(--card-border); border-radius: 8px; background: var(--card); color: var(--text); font-family: inherit; }
 /* Task 19: 视觉打磨 */
 #view-today,#view-done,#view-history { animation: fadeIn .2s; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } }
@@ -434,6 +434,7 @@ body.focusing .task-card.focused { filter: none; opacity: 1; pointer-events: aut
       <label>聚焦提醒 <input type="number" id="set-focus-min" min="1" style="width:64px"> 分钟</label>
       <label>休息时长 <input type="number" id="set-rest-min" min="1" style="width:64px"> 分钟</label>
       <label>正在处理上限 <input type="number" id="set-max-doing" min="1" style="width:64px"> 条</label>
+      <label>阻塞标签 <select id="set-block-label"></select></label>
     </div>
     <h4 style="margin-top:18px">外观</h4>
     <div class="settings-row">
@@ -604,6 +605,7 @@ function defaultState(now) {
       maxDoing: 2,
       focusRemindMin: 45,
       restMin: 5,
+      blockLabel: '阻塞等待',   // 批次27：阻塞按钮打的标签（设置页可改）；移入正在处理时自动摘除
       autoBackup: { enabled: false, lastBackupAt: null }
     }
   };
@@ -637,7 +639,7 @@ function rollover(state, now) {
   next.settings.dailyFixed.forEach(f => {
     if (next.tasks.some(t => t.text === f.text)) return;
     next.tasks.push({ id: genId(nowMs), text: f.text, zone: 'inbox',
-      labels: (f.labels || []).slice(), subtasks: (f.subtasks || []).map(s => ({ text: s.text, done: false })),
+      labels: (f.labels || []).slice(), subtasks: (f.subtasks || []).map(s => ({ id: genId(nowMs), text: s.text, done: false, doneAt: null })),   // 批次27：子任务必须有 id——勾选/📌/✕ 都靠 data-sid 定位，缺 id 全部失效
       focusMs: 0, focusMsToday: 0, minLine: null, minLineMet: false, rolledOver: false,
       createdAt: nowMs, completedAt: null });
   });
@@ -882,6 +884,8 @@ function migrate(s) {
     if (!Array.isArray(t.timeBlocks)) t.timeBlocks = typeof t.timeBlock === 'number' ? [t.timeBlock] : [];
     delete t.timeBlock;
   });
+  s.tasks.concat(...s.history.map(h => h.tasks || [])).forEach(t =>   // 批次27：旧数据补子任务 id（早期固定事项注入缺 id，勾选/📌/✕ 全失效）
+    (t.subtasks || []).forEach(sub => { if (!sub.id) sub.id = genId(); }));
   return s;
 }
 function loadState() {
@@ -1070,7 +1074,8 @@ function buildTaskCard(task) {
           (expandedIds.has(task.id) ? '▾' : '▸') + '</button>' : '') +
       '<span class="card-actions">' +
         (task.zone === 'inbox' ? '<button class="icon-btn" data-action="todoing" title="移入正在处理">▶</button>' : '') +
-        '<button class="icon-btn" data-action="focus" title="聚焦">◉</button>' +
+        (task.zone === 'doing' ? '<button class="icon-btn" data-action="focus" title="聚焦">◉</button>' : '') +   // 批次27：聚焦入口仅限正在处理区
+        (task.zone !== 'done' ? '<button class="icon-btn" data-action="block" title="阻塞：打阻塞标签并移到列表最后">⏸</button>' : '') +   // 批次27：阻塞按钮
         '<button class="icon-btn" data-action="edit" title="修改文字">✎</button>' +
         '<button class="icon-btn" data-action="remind" title="设置提醒">⏰</button>' +
         '<button class="icon-btn" data-action="copy" title="复制">⧉</button>' +
@@ -1181,6 +1186,7 @@ function fillSubtaskBox(card, task, readOnly) {
         '<input type="checkbox" class="sub-check" data-sid="' + s.id + '"' + (s.done ? ' checked' : '') + '>' +
         (href ? '<a class="task-link" target="_blank" rel="noopener" href="' + escapeHtml(href) + '"' + (s.done ? ' style="text-decoration:line-through;color:var(--text-2)"' : '') + '>' + escapeHtml(s.text) + '</a>'
               : '<span class="sub-text' + (s.done ? ' sub-done' : '') + '" data-sid="' + s.id + '" title="点击修改文字">' + escapeHtml(s.text) + '</span>') +
+        (task.zone === 'doing' ? '<button class="icon-btn sub-focus" data-sid="' + s.id + '" title="加强聚焦：开始聚焦并只显示任务名与该子任务">🎯</button>' : '') +   // 批次27：正在处理区子任务行直达加强聚焦（悬停显示，与聚焦卡一致）
         '<button class="icon-btn sub-pin' + (s.pinned ? ' pinned' : '') + '" data-sid="' + s.id + '" title="设为下一步（显示在任务标题旁）">📌</button>' +
         '<button class="icon-btn sub-del" data-sid="' + s.id + '">✕</button>' +
       '</div>';
@@ -1215,6 +1221,14 @@ function fillSubtaskBox(card, task, readOnly) {
     }
   });
   box.addEventListener('click', e => {
+    const dfb = e.target.closest('.sub-focus');   // 批次27：🎯 未聚焦→一步开始聚焦+加强；已聚焦本任务→切换/退出；聚焦他任务→提示
+    if (dfb) {
+      const sid = dfb.dataset.sid;
+      if (!state.focusSession) startFocus(task.id, sid);
+      else if (state.focusSession.taskId === task.id) toggleDeepFocus(sid);
+      else showToast('已在聚焦中，先退出当前聚焦');
+      return;
+    }
     const pinBtn = e.target.closest('.sub-pin');   // 批次19：设/取消"下一步"，每任务仅一个
     if (pinBtn) {
       const sid = pinBtn.dataset.sid;
@@ -1340,6 +1354,7 @@ function dispatchCardAction(e) {
   if (btn.dataset.action === 'expand') { toggleExpand(id); return; }
   if (btn.dataset.action === 'focus') { startFocus(id); return; }
   if (btn.dataset.action === 'todoing') { if (moveTask(id, 'doing', null)) showToast('已移入正在处理'); return; }   // 批次2：inbox 一键入 doing
+  if (btn.dataset.action === 'block') { blockTask(id); return; }   // 批次27：阻塞
   if (btn.dataset.action === 'edit') { startEditTaskText(id); return; }   // 批次2：修改文字
   if (btn.dataset.action === 'remind') { openRemindDialog(id); return; }   // 批次2：设置提醒
   if (btn.dataset.action === 'minline') { openMinLineDialog(id); return; }
@@ -1560,6 +1575,8 @@ function moveTask(id, toZone, toIndex) {
       zoneTasks('doing').length >= state.settings.maxDoing) {
     showToast('正在处理最多 ' + state.settings.maxDoing + ' 条，先移出一条'); return false;
   }
+  if (toZone === 'doing' && t.zone !== 'doing' && t.labels.includes(blockLabelName()))
+    t.labels = t.labels.filter(x => x !== blockLabelName());   // 批次27：移入正在处理自动解除阻塞（▶/拖拽/提醒"开始处理"都走这里）
   state.tasks = state.tasks.filter(x => x.id !== id);
   t.zone = toZone;
   t.completedAt = toZone === 'done' ? Date.now() : null;
@@ -1572,6 +1589,19 @@ function moveTask(id, toZone, toIndex) {
   save();
   if (toZone === 'done' && !wasDone) celebrate('big');   // 批次4：拖入完成也庆祝（区内重排/复活不触发）
   return true;
+}
+
+/* ============ 批次27：阻塞（⏸ 打标签 + 移到列表最后；入正在处理自动解除） ============ */
+function blockLabelName() { return state.settings.blockLabel || '阻塞等待'; }
+function blockTask(id) {
+  const t = state.tasks.find(x => x.id === id);
+  if (!t) return;
+  const name = blockLabelName();
+  if (!state.settings.labels.some(l => l.name === name))
+    state.settings.labels.push({ name: name, color: '#94A3B8' });   // 标签不存在则自动创建（灰色），开箱可用
+  if (!t.labels.includes(name)) t.labels.push(name);
+  moveTask(id, 'inbox', null);   // toIndex=null → 该区末尾；doing 中的任务同时腾出名额
+  showToast('已标记阻塞：' + name + '，移到列表最后');
 }
 
 function bindDragSource(container) {
@@ -1624,18 +1654,18 @@ document.getElementById('tab-done').addEventListener('drop', () => { if (dragCtx
 /* ============ Task 9: 聚焦模式与计时 ============ */
 let focusTimer = null;
 
-function startFocus(id) {
+function startFocus(id, deepSid) {
   if (state.focusSession) { showToast('已在聚焦中，先退出当前聚焦'); return; }
   const t = state.tasks.find(x => x.id === id);
   if (!t) return;
-  deepFocusSub = null;   // 批次25：新聚焦会话从普通模式开始（lastOpAt 在结算时由 settleFocusSession 刷新）
+  deepFocusSub = deepSid || null;   // 批次25：新聚焦会话从普通模式开始（lastOpAt 在结算时由 settleFocusSession 刷新）；批次27：可携带子任务 id 直达加强聚焦
   state.focusSession = { taskId: id, startAt: Date.now() };
   saveState();
   setFocusIndicator(true);   // 批次11：标签栏红点提示聚焦中
   expandedIds.add(id);
   applyFocusUi();
   renderAll();
-  showToast('聚焦开始，其余界面已模糊');
+  showToast(deepSid ? '加强聚焦开始，其余界面已模糊' : '聚焦开始，其余界面已模糊');
 }
 
 function exitFocus() {
@@ -2659,6 +2689,12 @@ function renderSettings() {
   document.getElementById('set-focus-min').value = state.settings.focusRemindMin;
   document.getElementById('set-rest-min').value = state.settings.restMin;
   document.getElementById('set-max-doing').value = state.settings.maxDoing;
+  const bl = document.getElementById('set-block-label');   // 批次27：阻塞按钮打的标签（当前值不在标签列表时补选项说明）
+  const curBlock = state.settings.blockLabel || '阻塞等待';
+  bl.innerHTML = state.settings.labels.map(l =>
+      '<option value="' + escapeHtml(l.name) + '"' + (l.name === curBlock ? ' selected' : '') + '>' + escapeHtml(l.name) + '</option>').join('') +
+    (state.settings.labels.some(l => l.name === curBlock) ? '' :
+      '<option value="' + escapeHtml(curBlock) + '" selected>' + escapeHtml(curBlock) + '（未创建，阻塞时自动建）</option>');
   document.getElementById('set-font').value = state.settings.fontFamily || '';   // 批次2：外观
   document.getElementById('set-fontsize').value = state.settings.fontSize || 'm';
   document.getElementById('fontfile-status').textContent = customFontOk   // 批次4：字体文件状态
@@ -2730,6 +2766,12 @@ document.getElementById('btn-composite-add').addEventListener('click', () => {
 
 /* ============ 批次23：更新日志 ============ */
 const CHANGELOG = [   // 批次23：新→旧；以后每次 push 前在此追加最新改动并经确认
+  { date: '2026-09-15', items: [
+    '修复：每日固定事项自动生成的任务，子任务勾选、📌置顶、✕删除、点文字修改全部不生效的问题（历史坏数据打开页面时自动补齐修复）',
+    '聚焦入口收敛：◉ 按钮与 F 快捷键只在「正在处理」区域可用，Inbox 卡片不再显示聚焦按钮',
+    '「正在处理」任务的子任务行新增 🎯：无需先点聚焦，悬停点击即直接进入加强聚焦（目标子任务放大居中）',
+    '新增 ⏸ 阻塞按钮：一键打上阻塞标签并移到今日列表最后（正在处理中的任务会腾出名额）；用哪个标签在设置页「参数」区指定，默认自动创建「阻塞等待」；任务移回「正在处理」时自动解除阻塞'
+  ] },
   { date: '2026-09-12', items: [
     '任务 ≥3 个工作日未操作会「枯萎」：卡片去色泛黄并长出 🌿，未展开也可见（天数计算跳过周末；只有真正累计聚焦时长才重置计时，改子任务/备注等不算；已完成不受影响）',
     '时间块规划：点顶部「⏱ 今日聚焦」进入，把未完成任务拖进 9:00–22:00 小时格（一个任务可占多个时间块，悬停格子看该时段任务，明天自动清空）；任务展开可见 🕘 时间块，到点未完成的任务卡片绿框高亮',
@@ -2808,6 +2850,10 @@ document.getElementById('btn-daily-add').addEventListener('click', () => {
     if (id === 'set-max-doing') state.settings.maxDoing = v;
     save();
   }));
+document.getElementById('set-block-label').addEventListener('change', e => {   // 批次27：指定阻塞标签
+  state.settings.blockLabel = e.target.value;
+  save();
+});
 document.getElementById('btn-bind-backup').addEventListener('click', bindBackupFile);
 document.getElementById('set-font').addEventListener('input', e => {   // 批次3：input 事件即时生效（不必失焦）；未安装的字体浏览器会回退默认
   state.settings.fontFamily = e.target.value.trim();
@@ -2846,7 +2892,7 @@ window.addEventListener('keydown', e => {
   else if (e.key === '3') showView('history');
   else if (e.key === 'f' || e.key === 'F') {
     if (state.focusSession) return;   // 已聚焦无操作
-    const target = zoneTasks('doing')[0] || zoneTasks('inbox')[0];
+    const target = zoneTasks('doing')[0];   // 批次27：聚焦入口仅限正在处理区（与卡片 ◉ 按钮一致）
     if (target) startFocus(target.id);
   }
 });
